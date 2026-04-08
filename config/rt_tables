@@ -1,0 +1,12 @@
+# /etc/iproute2/rt_tables
+# Map into container: -v /volume1/docker/zerotier/iproute2/rt_tables:/etc/iproute2/rt_tables
+#
+# Standard entries (do not remove)
+255    local
+254    main
+253    default
+0      unspec
+
+# DS918+ dual-NIC routing tables
+101    ISP_1
+102    ISP_2

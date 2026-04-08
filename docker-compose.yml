@@ -1,0 +1,28 @@
+services:
+  zerotier:
+    image: ddeitterick/zerotier-gateway
+    container_name: zerotier-moon
+    restart: always
+    devices:
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    networks:
+      macvlan-lan1:
+        ipv4_address: 192.168.1.253    # update to a free IP on LAN 1
+    ports:
+      - "9993:9993/udp"
+    volumes:
+      - /volume1/docker/zerotier/zerotier-one:/var/lib/zerotier-one
+      - /volume1/docker/zerotier/iptables:/etc/iptables
+      - /volume1/docker/zerotier/iproute2/rt_tables:/etc/iproute2/rt_tables
+    environment:
+      - NETWORK_IDS=<YOUR_ZT_NETWORK_ID>        # from my.zerotier.com
+      - DOCKER_HOST=192.168.1.253                # same as ipv4_address above
+      - MULTIPATH=Enabled
+
+networks:
+  macvlan-lan1:
+    external: true    # created in Container Manager UI — see README Step 4
+  macvlan-lan2:
+    external: true    # attach to container manually after first start — see README Step 5

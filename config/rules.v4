@@ -1,0 +1,12 @@
+# iptables NAT rules for ZeroTier gateway
+# Map into container: -v /volume1/docker/zerotier/iptables:/etc/iptables
+# File path inside container: /etc/iptables/rules.v4
+#
+# Masquerade traffic leaving via ZeroTier interface and both physical NICs.
+# Replace zt+ with your specific ZeroTier interface name if needed (e.g. ztabcd1234).
+
+*nat
+-I POSTROUTING -o zt+ -j MASQUERADE
+-I POSTROUTING -o eth0 -j MASQUERADE
+-I POSTROUTING -o eth1 -j MASQUERADE
+COMMIT
