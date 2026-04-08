@@ -38,7 +38,7 @@ For better isolation, create a dedicated bridge network via the Container Manage
 ## 3. Pull the ZeroTier One Image
 
 1. Open **Container Manager** → **Registry**.
-2. Search for `zerotier/zeronsd` or `zerotier/zerotier-one` (use `zerotier/zerotier-one` for a standard node/moon).
+2. Search for **`zerotier/zerotier-one`** and select it. (This is the standard ZeroTier daemon image used for running a moon/root server. `zerotier/zeronsd` is a separate DNS server package and is not needed for this guide.)
 3. Select the image and click **Download** to pull the `latest` tag.
 
 Alternatively, pull via SSH:
@@ -73,7 +73,7 @@ docker run --rm \
   zerotier/zerotier-one \
   bash -c "cd /var/lib/zerotier-one && \
     zerotier-idtool initmoon identity.public | \
-    sed 's/\"stableEndpoints\": \[\]/\"stableEndpoints\": [\"<YOUR_PUBLIC_IP>\/9993\"]/' \
+    sed 's|\"stableEndpoints\": \[\]|\"stableEndpoints\": [\"<YOUR_PUBLIC_IP>/9993\"]|' \
     > moon.json && \
     zerotier-idtool genmoon moon.json"
 ```
@@ -88,7 +88,7 @@ This produces a `000000<moonID>.moon` file inside `/volume1/docker/zerotier-one/
 2. **Image:** select `zerotier/zerotier-one:latest`.
 3. Under **Advanced Settings**:
    - **Volume:** add `/volume1/docker/zerotier-one` → `/var/lib/zerotier-one`
-   - **Network:** select `Host` mode (required so ZeroTier can manage network interfaces) **or** use bridge mode and map UDP port `9993`.
+   - **Network:** select **Host** mode (recommended — allows ZeroTier to fully manage virtual network interfaces). Alternatively, use **Bridge** mode and map UDP port `9993` to the container, but note that bridge mode may limit peer-to-peer NAT traversal performance since ZeroTier cannot directly manage the host network stack.
    - **Environment:** add `TZ` set to your timezone (e.g., `America/New_York`).
    - **Capabilities:** enable `NET_ADMIN` and `SYS_MODULE` (required for ZeroTier to manage virtual interfaces).
 4. Set **Restart Policy** to **Always**.
