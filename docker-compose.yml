@@ -1,0 +1,22 @@
+services:
+  zerotier-moon:
+    build: .
+    container_name: zerotier-moon
+    restart: unless-stopped
+    environment:
+      # Set this to the public IP address of your server
+      - ZT_PUBLIC_IP=${ZT_PUBLIC_IP:-}
+      # ZeroTier UDP port (default: 9993)
+      - ZT_PORT=${ZT_PORT:-9993}
+    ports:
+      - "${ZT_PORT:-9993}:${ZT_PORT:-9993}/udp"
+    volumes:
+      - zerotier-data:/var/lib/zerotier-one
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+
+volumes:
+  zerotier-data:
