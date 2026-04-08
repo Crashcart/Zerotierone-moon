@@ -1,0 +1,12 @@
+# ZeroTier identity secrets – never commit these
+identity.secret
+*.secret
+
+# Generated moon files
+*.moon
+
+# Environment files with secrets
+.env
+
+# macOS metadata
+.DS_Store

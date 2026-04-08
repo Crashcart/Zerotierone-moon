@@ -1,0 +1,16 @@
+services:
+  zerotier-moon:
+    image: seedgou/zerotier-moon:latest
+    container_name: zerotier-moon
+    restart: unless-stopped
+    ports:
+      - "9993:9993/udp"
+    volumes:
+      - /volume1/docker/zerotier-moon:/var/lib/zerotier-one
+    environment:
+      - ZEROTIER_MOON_PUBLIC_IP=${ZEROTIER_MOON_PUBLIC_IP}
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
