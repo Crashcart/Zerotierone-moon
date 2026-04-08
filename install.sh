@@ -1,0 +1,289 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────────────────────────
+# ZeroTier Moon Installer — Synology DS918+
+# Installs and configures a ZeroTier moon node with dual-NIC support.
+#
+# Usage:
+#   1. Copy .env.example to .env and fill in your values
+#   2. Enable SSH in DSM: Control Panel → Terminal & SNMP → Enable SSH
+#   3. ssh admin@<NAS_IP>, then: sudo -i
+#   4. cd /path/to/this/repo && bash install.sh
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env"
+
+# ─── Colours ───────────────────────────────────────────────────────────────────
+R='\033[0;31m' G='\033[0;32m' Y='\033[1;33m' B='\033[0;34m' NC='\033[0m'
+step() { echo -e "\n${B}[>]${NC} $*"; }
+ok()   { echo -e "  ${G}✓${NC} $*"; }
+warn() { echo -e "  ${Y}!${NC} $*"; }
+die()  { echo -e "  ${R}✗${NC} $*" >&2; exit 1; }
+ask()  { read -rp "    $1: " "$2"; }
+
+# ─── Root check ───────────────────────────────────────────────────────────────
+[[ $EUID -eq 0 ]] || die "Run as root: sudo -i, then bash install.sh"
+
+# ─── Docker check ─────────────────────────────────────────────────────────────
+command -v docker &>/dev/null || die "Docker not found. Install Container Manager from DSM Package Center first."
+
+# ─── Load or create .env ──────────────────────────────────────────────────────
+step "Configuration"
+
+if [[ -f "$ENV_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$ENV_FILE"
+    ok "Loaded config from .env"
+else
+    warn ".env not found — running interactive setup (or copy .env.example to .env)"
+    echo
+
+    ask "ZeroTier Network ID (from my.zerotier.com)" ZT_NETWORK_ID
+    ask "LAN 1 subnet (e.g. 192.168.1.0/24)"         LAN1_SUBNET
+    ask "LAN 1 gateway (e.g. 192.168.1.1)"            LAN1_GATEWAY
+    ask "Container IP on LAN 1 (e.g. 192.168.1.253)"  LAN1_CONTAINER_IP
+    ask "LAN 2 subnet (e.g. 172.16.0.0/24)"           LAN2_SUBNET
+    ask "LAN 2 gateway (e.g. 172.16.0.1)"             LAN2_GATEWAY
+    ask "Container IP on LAN 2 (e.g. 172.16.0.253)"   LAN2_CONTAINER_IP
+    ask "Public IP or DDNS for moon endpoint (leave blank to skip)" ZT_PUBLIC_ENDPOINT
+
+    DATA_DIR="/volume1/docker/zerotier"
+    CONTAINER_NAME="zerotier-moon"
+    IMAGE_NAME="zerotier-moon"
+
+    # Save to .env for future runs
+    cat > "$ENV_FILE" <<EOF
+ZT_NETWORK_ID=${ZT_NETWORK_ID}
+ZT_PUBLIC_ENDPOINT=${ZT_PUBLIC_ENDPOINT}
+LAN1_SUBNET=${LAN1_SUBNET}
+LAN1_GATEWAY=${LAN1_GATEWAY}
+LAN1_CONTAINER_IP=${LAN1_CONTAINER_IP}
+LAN2_SUBNET=${LAN2_SUBNET}
+LAN2_GATEWAY=${LAN2_GATEWAY}
+LAN2_CONTAINER_IP=${LAN2_CONTAINER_IP}
+DATA_DIR=${DATA_DIR}
+CONTAINER_NAME=${CONTAINER_NAME}
+IMAGE_NAME=${IMAGE_NAME}
+EOF
+    ok "Saved config to .env"
+fi
+
+# Validate required values
+[[ -n "${ZT_NETWORK_ID:-}"       ]] || die "ZT_NETWORK_ID is not set"
+[[ -n "${LAN1_SUBNET:-}"         ]] || die "LAN1_SUBNET is not set"
+[[ -n "${LAN1_GATEWAY:-}"        ]] || die "LAN1_GATEWAY is not set"
+[[ -n "${LAN1_CONTAINER_IP:-}"   ]] || die "LAN1_CONTAINER_IP is not set"
+[[ -n "${LAN2_SUBNET:-}"         ]] || die "LAN2_SUBNET is not set"
+[[ -n "${LAN2_GATEWAY:-}"        ]] || die "LAN2_GATEWAY is not set"
+[[ -n "${LAN2_CONTAINER_IP:-}"   ]] || die "LAN2_CONTAINER_IP is not set"
+
+DATA_DIR="${DATA_DIR:-/volume1/docker/zerotier}"
+CONTAINER_NAME="${CONTAINER_NAME:-zerotier-moon}"
+IMAGE_NAME="${IMAGE_NAME:-zerotier-moon}"
+
+# ─── Derive interface names from subnets ──────────────────────────────────────
+# Detect the host interface that owns the LAN1/LAN2 gateway IP
+LAN1_IF=$(ip route | awk "/$(echo "$LAN1_SUBNET" | sed 's|/.*||' | awk -F. '{print $1"."$2}')/ {print \$3; exit}")
+LAN2_IF=$(ip route | awk "/$(echo "$LAN2_SUBNET" | sed 's|/.*||' | awk -F. '{print $1"."$2}')/ {print \$3; exit}")
+
+# Fall back to eth0/eth1 if detection fails
+LAN1_IF="${LAN1_IF:-eth0}"
+LAN2_IF="${LAN2_IF:-eth1}"
+
+ok "LAN 1 interface: $LAN1_IF ($LAN1_SUBNET)"
+ok "LAN 2 interface: $LAN2_IF ($LAN2_SUBNET)"
+
+# ─── Step 1: IP Forwarding ────────────────────────────────────────────────────
+step "Enabling IP forwarding"
+
+if grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf 2>/dev/null; then
+    ok "Already set in /etc/sysctl.conf"
+else
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+    ok "Added to /etc/sysctl.conf"
+fi
+
+sysctl -w net.ipv4.ip_forward=1 &>/dev/null
+ok "IP forwarding active"
+
+# ─── Step 2: Create data directories ─────────────────────────────────────────
+step "Creating data directories under $DATA_DIR"
+
+mkdir -p \
+    "$DATA_DIR/zerotier-one/moons.d" \
+    "$DATA_DIR/iproute2" \
+    "$DATA_DIR/iptables"
+
+ok "Directories ready"
+
+# ─── Step 3: Generate config files ────────────────────────────────────────────
+step "Writing config files"
+
+# setuproutes.sh — templated from .env values
+cat > "$DATA_DIR/zerotier-one/setuproutes.sh" <<EOF
+#!/bin/sh
+# Auto-generated by install.sh — dual-NIC policy routing for DS918+
+
+IF1="${LAN1_IF}"
+IF2="${LAN2_IF}"
+
+IP1="${LAN1_CONTAINER_IP}"
+IP2="${LAN2_CONTAINER_IP}"
+
+P1="${LAN1_GATEWAY}"
+P2="${LAN2_GATEWAY}"
+
+P1_NET="${LAN1_SUBNET}"
+P2_NET="${LAN2_SUBNET}"
+
+TBL1="ISP_1"
+TBL2="ISP_2"
+
+ip route add \$P1_NET dev \$IF1 src \$IP1 table \$TBL1 2>/dev/null || true
+ip route add default via \$P1 table \$TBL1 2>/dev/null || true
+
+ip route add \$P2_NET dev \$IF2 src \$IP2 table \$TBL2 2>/dev/null || true
+ip route add default via \$P2 table \$TBL2 2>/dev/null || true
+
+ip rule add from \$P1_NET table \$TBL1 2>/dev/null || true
+ip rule add from \$P2_NET table \$TBL2 2>/dev/null || true
+
+echo "Routing rules applied (LAN1=\$IF1, LAN2=\$IF2)"
+EOF
+chmod +x "$DATA_DIR/zerotier-one/setuproutes.sh"
+ok "setuproutes.sh"
+
+# rt_tables
+cat > "$DATA_DIR/iproute2/rt_tables" <<'EOF'
+255    local
+254    main
+253    default
+0      unspec
+101    ISP_1
+102    ISP_2
+EOF
+ok "rt_tables"
+
+# rules.v4
+cat > "$DATA_DIR/iptables/rules.v4" <<EOF
+*nat
+-I POSTROUTING -o zt+ -j MASQUERADE
+-I POSTROUTING -o ${LAN1_IF} -j MASQUERADE
+-I POSTROUTING -o ${LAN2_IF} -j MASQUERADE
+COMMIT
+EOF
+ok "rules.v4"
+
+# ─── Step 4: Build Docker image ───────────────────────────────────────────────
+step "Building Docker image: $IMAGE_NAME"
+
+docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+ok "Image built: $IMAGE_NAME"
+
+# ─── Step 5: Create macvlan Docker networks ───────────────────────────────────
+step "Creating macvlan Docker networks"
+
+create_macvlan() {
+    local name=$1 parent=$2 subnet=$3 gateway=$4
+    if docker network inspect "$name" &>/dev/null; then
+        warn "Network $name already exists — skipping"
+    else
+        docker network create \
+            --driver macvlan \
+            --subnet "$subnet" \
+            --gateway "$gateway" \
+            -o parent="$parent" \
+            "$name"
+        ok "Created $name (parent=$parent, $subnet)"
+    fi
+}
+
+create_macvlan "macvlan-lan1" "$LAN1_IF" "$LAN1_SUBNET" "$LAN1_GATEWAY"
+create_macvlan "macvlan-lan2" "$LAN2_IF" "$LAN2_SUBNET" "$LAN2_GATEWAY"
+
+# ─── Step 6: Write final docker-compose.yml ───────────────────────────────────
+step "Writing docker-compose.yml"
+
+cat > "$SCRIPT_DIR/docker-compose.yml" <<EOF
+services:
+  zerotier:
+    image: ${IMAGE_NAME}
+    container_name: ${CONTAINER_NAME}
+    restart: always
+    devices:
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    networks:
+      macvlan-lan1:
+        ipv4_address: ${LAN1_CONTAINER_IP}
+      macvlan-lan2:
+        ipv4_address: ${LAN2_CONTAINER_IP}
+    ports:
+      - "9993:9993/udp"
+    volumes:
+      - ${DATA_DIR}/zerotier-one:/var/lib/zerotier-one
+      - ${DATA_DIR}/iptables:/etc/iptables
+      - ${DATA_DIR}/iproute2/rt_tables:/etc/iproute2/rt_tables
+    environment:
+      - NETWORK_IDS=${ZT_NETWORK_ID}
+      - GENERATE_MOON=true
+      - MOON_ENDPOINTS=${LAN1_CONTAINER_IP}/9993,${LAN2_CONTAINER_IP}/9993${ZT_PUBLIC_ENDPOINT:+,${ZT_PUBLIC_ENDPOINT}/9993}
+
+networks:
+  macvlan-lan1:
+    external: true
+  macvlan-lan2:
+    external: true
+EOF
+
+ok "docker-compose.yml written"
+
+# ─── Step 7: Start the container ─────────────────────────────────────────────
+step "Starting container"
+
+# Stop and remove any existing container with same name
+if docker inspect "$CONTAINER_NAME" &>/dev/null; then
+    warn "Existing container found — removing"
+    docker rm -f "$CONTAINER_NAME"
+fi
+
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
+ok "Container started: $CONTAINER_NAME"
+
+# ─── Step 8: Wait and report ─────────────────────────────────────────────────
+step "Waiting for ZeroTier to initialise"
+
+sleep 5
+
+ZT_STATUS=$(docker exec "$CONTAINER_NAME" zerotier-cli status 2>/dev/null || echo "not ready yet")
+ok "ZeroTier status: $ZT_STATUS"
+
+NODE_ID=$(docker exec "$CONTAINER_NAME" zerotier-cli status 2>/dev/null | awk '{print $3}' || echo "unknown")
+
+echo
+echo -e "${G}────────────────────────────────────────────────────────────${NC}"
+echo -e "${G} ZeroTier Moon installed successfully${NC}"
+echo -e "${G}────────────────────────────────────────────────────────────${NC}"
+echo
+echo "  Node ID     : $NODE_ID"
+echo "  LAN 1       : $LAN1_CONTAINER_IP ($LAN1_IF)"
+echo "  LAN 2       : $LAN2_CONTAINER_IP ($LAN2_IF)"
+echo "  Data dir    : $DATA_DIR"
+echo
+echo "  Next steps:"
+echo "  1. Authorize this node at https://my.zerotier.com (Members tab)"
+echo "  2. Wait ~30s for the moon to compile — check with:"
+echo "       docker exec $CONTAINER_NAME zerotier-cli listpeers"
+echo "  3. Find your Moon ID:"
+echo "       docker exec $CONTAINER_NAME ls /var/lib/zerotier-one/moons.d/"
+echo "  4. On every client, run:"
+echo "       zerotier-cli orbit <MOON_ID> <MOON_ID>"
+echo
+echo "  Useful commands:"
+echo "    docker logs -f $CONTAINER_NAME"
+echo "    docker exec $CONTAINER_NAME zerotier-cli status"
+echo "    docker exec $CONTAINER_NAME zerotier-cli listpeers"
+echo
