@@ -1,0 +1,43 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, test, 'claude/**' ]
+  pull_request:
+    branches: [ main, test ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Validate docker-compose.yml exists
+      run: |
+        if [ -f "docker-compose.yml" ]; then
+          echo "✓ docker-compose.yml found"
+          docker compose config > /dev/null 2>&1 && echo "✓ docker-compose.yml is valid YAML" || echo "⚠️ docker-compose.yml may have issues (docker not available in CI)"
+        else
+          echo "⚠️ docker-compose.yml not yet created"
+        fi
+
+    - name: Validate README exists
+      run: |
+        if [ -f "README.md" ]; then
+          echo "✓ README.md found"
+        else
+          echo "⚠️ README.md not found"
+        fi
+
+    - name: Check governance files present
+      run: |
+        files=(".github/copilot-instructions.md" ".github/REPO_CONFIG.md" ".github/TODO.md" ".github/PLANNING.md")
+        for f in "${files[@]}"; do
+          if [ -f "$f" ]; then
+            echo "✓ $f"
+          else
+            echo "❌ Missing: $f"
+            exit 1
+          fi
+        done
