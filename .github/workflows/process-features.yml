@@ -1,0 +1,58 @@
+name: Process Feature Queue (3-Day Freeze Rule)
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  process-queue:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+
+      - name: Check for features ready to unfreeze
+        id: check
+        run: |
+          node -e "
+            const fs = require('fs');
+            const queuePath = '.github/feature-queue.json';
+            if (!fs.existsSync(queuePath)) { process.stdout.write(''); process.exit(0); }
+            const queue = JSON.parse(fs.readFileSync(queuePath, 'utf8'));
+            const now = new Date();
+            let changed = false;
+            const ready = [];
+
+            queue.features = queue.features.map(f => {
+              if (f.status === 'frozen' && new Date(f.unfreezeAt) <= now) {
+                console.log('READY: ' + f.id + ' — ' + f.title);
+                ready.push(f);
+                changed = true;
+                return { ...f, status: 'ready' };
+              }
+              return f;
+            });
+
+            if (changed) {
+              fs.writeFileSync(queuePath, JSON.stringify(queue, null, 2) + '\n');
+            }
+
+            fs.writeFileSync('/tmp/ready-features.json', JSON.stringify(ready, null, 2));
+          "
+          READY_COUNT=$(node -e "const f=require('/tmp/ready-features.json'); console.log(f.length)" 2>/dev/null || echo 0)
+          echo "ready_count=$READY_COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Report — nothing to unfreeze
+        if: steps.check.outputs.ready_count == '0'
+        run: echo "✅ No features ready to unfreeze today."
