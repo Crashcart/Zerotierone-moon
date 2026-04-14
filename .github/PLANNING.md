@@ -21,6 +21,9 @@
 - [2026-04-14] `network_mode: host` chosen over bridge — avoids port mapping complexity for UDP 9993
 - [2026-04-14] Volume at `/volume1/docker/zerotierone-moon/data` — standard DSM 7 docker data location
 - [2026-04-14] No Runtipi packaging — user is on Synology Container Manager directly
+- [2026-04-14] `install.sh` script chosen over GUI guide — moon init requires CLI regardless; one-liner reduces error surface
+- [2026-04-14] stableEndpoints set interactively from detected local IPs — NAS is dual-homed, user picks the right interface
+- [2026-04-14] Moon config generated inline (no temp files left behind); container restarted to activate
 
 ---
 
