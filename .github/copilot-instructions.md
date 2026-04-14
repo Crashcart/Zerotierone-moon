@@ -46,7 +46,6 @@ The files listed below **govern all AI agent behavior**. Any AI editing these fi
 - `.github/PLANNING.md` — planning and handoff
 - `.github/pull_request_template.md` — PR template
 - `.github/ISSUE_TEMPLATE/*` — issue templates
-- `.github/agents/*.agent.md` — agent definitions
 - `.github/workflows/*.yml` — CI/CD pipelines
 
 ### Rules for editing governance files:
@@ -242,21 +241,6 @@ When discovering or picking up issues:
 - Do NOT close duplicates — only humans close issues
 
 ---
-
-## MULTI-REPO COORDINATION
-
-These repositories share this governance framework:
-- `crashcart/kali-ai-term`
-- `crashcart/ollama-intelgpu`
-- `crashcart/rpg-bot`
-- `crashcart/discord-chromecast`
-- `crashcart/zerotierone-moon`
-
-When working across repos:
-- Each repo has its own `TODO.md`, `PLANNING.md`, and `REPO_CONFIG.md`
-- Create separate branches and PRs per repo
-- Track cross-repo dependencies in PLANNING.md
-- All the same rules apply — no exceptions
 
 ---
 

@@ -1,5 +1,0 @@
-{
-  "_comment": "Feature freeze queue. New features are frozen for 3 days before processing. Managed by .github/workflows/process-features.yml",
-  "freezeDays": 3,
-  "features": []
-}
