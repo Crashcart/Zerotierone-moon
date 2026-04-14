@@ -9,7 +9,18 @@
 
 ## 🎯 Active Initiatives
 
-No active initiatives yet.
+### Initial Project Setup — Moon Node for Synology DSM 7+
+
+**Status**: ✅ Complete — PR ready for review
+**Branch**: `claude/research-install-github-qDMDt`
+
+**Approach**: Deploy ZeroTier One as a pure relay (moon node) via Synology Container Manager using the `zyclonite/zerotier` Docker image. `network_mode: host` used to avoid UDP NAT issues on DSM 7.
+
+**Decisions Log**:
+- [2026-04-14] Used `zyclonite/zerotier` over building custom image — well-tested on Synology, actively maintained
+- [2026-04-14] `network_mode: host` chosen over bridge — avoids port mapping complexity for UDP 9993
+- [2026-04-14] Volume at `/volume1/docker/zerotierone-moon/data` — standard DSM 7 docker data location
+- [2026-04-14] No Runtipi packaging — user is on Synology Container Manager directly
 
 ---
 

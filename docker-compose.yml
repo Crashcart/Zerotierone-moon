@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  zerotier:
+    image: zyclonite/zerotier:latest
+    container_name: zerotierone-moon
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    devices:
+      - /dev/net/tun
+    volumes:
+      - /volume1/docker/zerotierone-moon/data:/var/lib/zerotier-one

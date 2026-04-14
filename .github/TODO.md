@@ -12,7 +12,8 @@
 
 | ID | Task | Status | Priority | Notes |
 |:--:|------|--------|----------|-------|
-| — | No active tasks | — | — | — |
+| 1 | Add docker-compose.yml for Synology DSM 7+ Container Manager | ✅ completed | 🟠 HIGH | zyclonite/zerotier image |
+| 2 | Write README.md with full moon node setup guide | ✅ completed | 🟠 HIGH | Synology-specific steps |
 
 ---
 
