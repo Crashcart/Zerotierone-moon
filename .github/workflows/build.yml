@@ -1,22 +1,37 @@
-name: Docker Build
+name: Docker Validate
 
 on:
   push:
-    branches: [ main, test, 'claude/**' ]
+    branches: [ main, 'claude/**' ]
   pull_request:
-    branches: [ main, test ]
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+    - uses: actions/checkout@v4
 
     - name: Validate docker-compose.yml
       run: |
-        which docker-compose >/dev/null 2>&1 && docker-compose config > /dev/null 2>&1 || docker compose config > /dev/null 2>&1 || (echo "❌ Invalid docker-compose.yml" && exit 1)
+        docker compose config > /dev/null 2>&1 || (echo "❌ Invalid docker-compose.yml" && exit 1)
         echo "✓ docker-compose.yml is valid"
+
+    - name: Verify required image is referenced
+      run: |
+        grep -q "zyclonite/zerotier" docker-compose.yml \
+          && echo "✓ zyclonite/zerotier image present" \
+          || (echo "❌ Expected zyclonite/zerotier image not found" && exit 1)
+
+    - name: Verify host networking is configured
+      run: |
+        grep -q "network_mode: host" docker-compose.yml \
+          && echo "✓ network_mode: host present" \
+          || (echo "❌ network_mode: host missing — required for UDP 9993" && exit 1)
+
+    - name: Verify /dev/net/tun device is mounted
+      run: |
+        grep -q "/dev/net/tun" docker-compose.yml \
+          && echo "✓ /dev/net/tun device present" \
+          || (echo "❌ /dev/net/tun device missing" && exit 1)

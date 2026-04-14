@@ -1,6 +1,6 @@
 # Branch Protection Setup Guide
 
-This guide explains how to configure branch protection rules on GitHub to enforce the CI/CD workflow.
+How to configure branch protection on GitHub to enforce the CI/CD workflow.
 
 ## Setup Instructions
 
@@ -14,26 +14,23 @@ This guide explains how to configure branch protection rules on GitHub to enforc
 1. Click **Add rule**, enter `main`
 2. Configure:
    - ✅ Require pull request before merging (1 approval)
-   - ✅ Require status checks: Tests, Lint & Format, Docker Build
+   - ✅ Require status checks: `Tests`, `Lint`, `Docker Validate`
    - ✅ Require branches to be up to date before merging
    - ✅ Allow auto-merge (squash strategy)
 
-### Step 3: Configure "test" Branch Protection
-
-Same as main, with 1 required approval.
-
 ## Testing the Setup
 
-1. Create a test branch and push changes
-2. Confirm all status checks run
-3. Approve the PR and verify auto-merge works
+1. Create a `claude/test-branch` and push changes
+2. Open a PR to `main`
+3. Confirm all three status checks run
+4. Approve the PR and verify auto-merge triggers
 
 ## Quick Reference
 
-| Aspect | main | test |
-|--------|------|------|
-| PR Required | ✅ Yes | ✅ Yes |
-| Approvals | 1+ | 1+ |
-| Status Checks | All | All |
-| Auto-merge | ✅ Yes | ✅ Yes |
-| Merge Strategy | Squash | Squash |
+| Aspect | main |
+|--------|------|
+| PR Required | ✅ Yes |
+| Approvals | 1+ |
+| Status Checks | Tests, Lint, Docker Validate |
+| Auto-merge | ✅ Yes (claude/** branches) |
+| Merge Strategy | Squash |

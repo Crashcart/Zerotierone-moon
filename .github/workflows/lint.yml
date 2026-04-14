@@ -1,27 +1,36 @@
-name: Lint & Format
+name: Lint
 
 on:
   push:
-    branches: [ main, test, 'claude/**' ]
+    branches: [ main, 'claude/**' ]
   pull_request:
-    branches: [ main, test ]
+    branches: [ main ]
 
 jobs:
   lint:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Validate YAML files
       run: |
         find . -name "*.yml" -o -name "*.yaml" | grep -v ".git" | while read f; do
-          python3 -c "import yaml, sys; yaml.safe_load(open('$f'))" 2>&1 && echo "✓ $f" || (echo "❌ $f" && exit 1)
+          python3 -c "import yaml, sys; yaml.safe_load(open('$f'))" && echo "✓ $f" || (echo "❌ $f" && exit 1)
         done
+
+    - name: ShellCheck install.sh
+      run: |
+        if command -v shellcheck &>/dev/null; then
+          shellcheck install.sh && echo "✓ install.sh shellcheck passed"
+        else
+          bash -n install.sh && echo "✓ install.sh syntax OK (shellcheck not available)"
+        fi
 
     - name: Check for hardcoded secrets
       run: |
-        if grep -rE "(password|secret|token|api_key)\s*=\s*['\"][^'\"]+" --include="*.yml" --include="*.yaml" --include="*.sh" .; then
+        if grep -rE "(password|secret|token|api_key)\s*=\s*['\"][^'\"]+" \
+            --include="*.yml" --include="*.yaml" --include="*.sh" .; then
           echo "❌ Possible hardcoded secrets found"
           exit 1
         fi
