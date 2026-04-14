@@ -1,10 +1,13 @@
 #!/bin/bash
 # ZeroTier Moon Node — Synology DSM 7+ (Container Manager)
-# Usage: bash install.sh [install|update|uninstall]
 #
-# install    Set up the moon node from scratch (default)
-# update     Pull latest image and restart, preserving moon config
-# uninstall  Stop and remove the moon node
+# Synology's admin shell is sh (ash) — use this one-liner instead of bash <(...):
+#   curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && bash /tmp/zt-install.sh
+#
+# Usage: bash install.sh [install|update|uninstall]
+#   install    Set up the moon node from scratch (default)
+#   update     Pull latest image and restart, preserving moon config
+#   uninstall  Stop and remove the moon node
 
 set -e
 

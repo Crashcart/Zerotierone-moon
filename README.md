@@ -15,8 +15,8 @@ Network A  ──[eth0]──  DS918 (ZeroTier moon)  ──[eth1]──  Networ
 
 SSH into the DS918, then run:
 
-```bash
-bash <(curl -sSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh)
+```sh
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && bash /tmp/zt-install.sh
 ```
 
 The script will:
@@ -33,8 +33,8 @@ The script will:
 
 Pull the latest image and restart, preserving your moon config:
 
-```bash
-bash <(curl -sSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh) update
+```sh
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && bash /tmp/zt-install.sh update
 ```
 
 ---
@@ -43,8 +43,8 @@ bash <(curl -sSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/ma
 
 Stop and remove the moon node:
 
-```bash
-bash <(curl -sSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh) uninstall
+```sh
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && bash /tmp/zt-install.sh uninstall
 ```
 
 You will be prompted before anything is deleted. The data directory (which holds the moon identity) is kept by default — delete it only if you want to fully reset.
