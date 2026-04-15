@@ -2,8 +2,8 @@
 
 > 🔒 **GOVERNANCE FILE** — Protected by Rule 10 in `copilot-instructions.md`.
 
-**Last Updated**: 2026-04-14
-**Current Session**: —
+**Last Updated**: 2026-04-15
+**Current Session**: Antigravity — DSM 7+ compatibility fixes
 **Repository**: zerotierone-moon
 
 ---
@@ -16,6 +16,7 @@
 | 2 | Write README.md with full moon node setup guide | ✅ completed | 🟠 HIGH | Synology-specific steps |
 | 3 | Write install.sh — install / update / uninstall modes | ✅ completed | 🟠 HIGH | curl one-liner; syntax-verified |
 | 4 | Merge feature branch to main | ✅ completed | 🟠 HIGH | `claude/research-install-github-qDMDt` → `main` |
+| 5 | Fix install.sh for DSM 7+ shell compatibility | 🟠 in-progress | 🟠 HIGH | grep -oP, mapfile, modprobe path — all broken on BusyBox/DSM 7 |
 
 ---
 
