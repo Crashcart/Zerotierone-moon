@@ -24,14 +24,14 @@ Lines containing `raw.githubusercontent.com/Crashcart/Zerotierone-moon/<branch>/
 
 | Line | Pattern | Notes |
 |------|---------|-------|
-| 19 | `.../main/install.sh` | Basic install one-liner |
-| 35 | `.../main/install.sh` | Fully automatic install |
-| 41 | `.../main/install.sh` | Auto install with explicit IP |
-| 62 | `.../main/install.sh` | Update one-liner |
-| 72 | `.../main/install.sh` | Uninstall one-liner |
-| 78 | `.../main/install.sh` | Uninstall --purge one-liner |
+| 21 | `.../alpha/install.sh` | Basic install one-liner |
+| 37 | `.../alpha/install.sh` | Fully automatic install |
+| 43 | `.../alpha/install.sh` | Auto install with explicit IP |
+| 64 | `.../alpha/install.sh` | Update one-liner |
+| 74 | `.../alpha/install.sh` | Uninstall one-liner |
+| 80 | `.../alpha/install.sh` | Uninstall --purge one-liner |
 
-**Replacement rule**: `raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/` → `raw.githubusercontent.com/Crashcart/Zerotierone-moon/<target-branch>/`
+**Replacement rule**: `raw.githubusercontent.com/Crashcart/Zerotierone-moon/alpha/` → `raw.githubusercontent.com/Crashcart/Zerotierone-moon/<target-branch>/`
 
 ---
 
@@ -40,7 +40,7 @@ Lines containing a URL comment pointing users to the raw script.
 
 | Line | Pattern | Notes |
 |------|---------|-------|
-| 5 | `#   curl -fsSL .../main/install.sh` | Header comment — shown in usage output |
+| 8 | `#   curl -fsSL .../alpha/install.sh` | Header comment — shown in usage output |
 
 **Replacement rule**: same as README.md above.
 

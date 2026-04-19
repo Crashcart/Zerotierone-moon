@@ -41,9 +41,9 @@ error() { echo -e "${RED}[ERR ]${NC}  $*"; exit 1; }
 
 # ── Detect docker compose command ─────────────────────────────────────────────
 if docker compose version >/dev/null 2>&1; then
-    DC="docker compose"
+    DC=(docker compose)
 elif command -v docker-compose >/dev/null 2>&1; then
-    DC="docker-compose"
+    DC=(docker-compose)
 else
     error "docker compose not found. Make sure Container Manager is installed in DSM."
 fi
@@ -73,7 +73,7 @@ do_install() {
             [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
         fi
         info "Stopping existing container..."
-        cd "$COMPOSE_DIR" 2>/dev/null && $DC down 2>/dev/null || docker rm -f "$CONTAINER" 2>/dev/null || true
+        cd "$COMPOSE_DIR" 2>/dev/null && "${DC[@]}" down 2>/dev/null || docker rm -f "$CONTAINER" 2>/dev/null || true
     fi
 
     # Check /dev/net/tun
@@ -118,9 +118,9 @@ YAML
     # Pull and start
     info "Pulling image $IMAGE ..."
     cd "$COMPOSE_DIR"
-    $DC pull
+    "${DC[@]}" pull
     info "Starting container..."
-    $DC up -d
+    "${DC[@]}" up -d
     ok "Container started"
 
     # Wait for daemon (30 × 2s = 60s timeout)
@@ -279,10 +279,10 @@ do_update() {
 
     cd "$COMPOSE_DIR"
     info "Pulling latest image..."
-    $DC pull
+    "${DC[@]}" pull
 
     info "Recreating container..."
-    $DC up -d --force-recreate
+    "${DC[@]}" up -d --force-recreate
 
     # Wait for daemon
     info "Waiting for daemon..."
@@ -315,7 +315,7 @@ do_uninstall() {
     if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER}$"; then
         info "Stopping and removing container..."
         if [ -f "$COMPOSE_FILE" ]; then
-            cd "$COMPOSE_DIR" && $DC down 2>/dev/null || docker rm -f "$CONTAINER"
+            cd "$COMPOSE_DIR" && "${DC[@]}" down 2>/dev/null || docker rm -f "$CONTAINER"
         else
             docker rm -f "$CONTAINER"
         fi
