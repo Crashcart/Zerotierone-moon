@@ -1,8 +1,11 @@
 #!/bin/bash
 # ZeroTier Moon Node — Synology DSM 7+ (Container Manager)
 #
+# branch-aware: the URL below must match the branch this file lives on.
+# See .github/BRANCH_AWARE_FILES.md for the full list and promotion checklist.
+#
 # Synology's admin shell is sh (ash) — use this one-liner instead of bash <(...):
-#   curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && bash /tmp/zt-install.sh
+#   curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/alpha/install.sh -o /tmp/zt-install.sh && bash /tmp/zt-install.sh
 #
 # Usage: bash install.sh [ACTION] [OPTIONS]
 #
@@ -38,9 +41,9 @@ error() { echo -e "${RED}[ERR ]${NC}  $*"; exit 1; }
 
 # ── Detect docker compose command ─────────────────────────────────────────────
 if docker compose version >/dev/null 2>&1; then
-    DC="docker compose"
+    DC=(docker compose)
 elif command -v docker-compose >/dev/null 2>&1; then
-    DC="docker-compose"
+    DC=(docker-compose)
 else
     error "docker compose not found. Make sure Container Manager is installed in DSM."
 fi
@@ -70,7 +73,11 @@ do_install() {
             [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
         fi
         info "Stopping existing container..."
-        cd "$COMPOSE_DIR" 2>/dev/null && $DC down 2>/dev/null || docker rm -f "$CONTAINER" 2>/dev/null || true
+        if cd "$COMPOSE_DIR" 2>/dev/null; then
+            "${DC[@]}" down 2>/dev/null || docker rm -f "$CONTAINER" 2>/dev/null || true
+        else
+            docker rm -f "$CONTAINER" 2>/dev/null || true
+        fi
     fi
 
     # Check /dev/net/tun
@@ -80,7 +87,7 @@ do_install() {
         if ! modprobe tun 2>/dev/null; then
             # DSM 7 may not have modprobe — search for the module manually
             TUN_KO=$(find /lib/modules -name 'tun.ko*' 2>/dev/null | head -1)
-            [ -n "$TUN_KO" ] && insmod "$TUN_KO" 2>/dev/null || true
+            if [ -n "$TUN_KO" ]; then insmod "$TUN_KO" 2>/dev/null || true; fi
         fi
         [ -c /dev/net/tun ] || error "/dev/net/tun still missing after modprobe. Check DSM kernel modules."
     fi
@@ -114,10 +121,10 @@ YAML
 
     # Pull and start
     info "Pulling image $IMAGE ..."
-    cd "$COMPOSE_DIR"
-    $DC pull
+    cd "$COMPOSE_DIR" || error "Cannot cd to $COMPOSE_DIR"
+    "${DC[@]}" pull
     info "Starting container..."
-    $DC up -d
+    "${DC[@]}" up -d
     ok "Container started"
 
     # Wait for daemon (30 × 2s = 60s timeout)
@@ -195,7 +202,7 @@ YAML
     info "Generating moon configuration..."
     docker exec "$CONTAINER" sh -c \
         "zerotier-idtool initmoon /var/lib/zerotier-one/identity.public \
-         | sed 's/\"stableEndpoints\":\[\]/\"stableEndpoints\":[\"'"${LOCAL_IP}"'\/9993\"]/' \
+         | sed 's/\"stableEndpoints\":\[\]/\"stableEndpoints\":[\"'""${LOCAL_IP}""'\/9993\"]/' \
          > /var/lib/zerotier-one/moon.json"
 
     info "Signing moon..."
@@ -274,12 +281,12 @@ do_update() {
 
     [ -f "$COMPOSE_FILE" ] || error "No installation found at $COMPOSE_DIR. Run: bash install.sh install"
 
-    cd "$COMPOSE_DIR"
+    cd "$COMPOSE_DIR" || error "Cannot cd to $COMPOSE_DIR"
     info "Pulling latest image..."
-    $DC pull
+    "${DC[@]}" pull
 
     info "Recreating container..."
-    $DC up -d --force-recreate
+    "${DC[@]}" up -d --force-recreate
 
     # Wait for daemon
     info "Waiting for daemon..."
@@ -312,7 +319,11 @@ do_uninstall() {
     if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER}$"; then
         info "Stopping and removing container..."
         if [ -f "$COMPOSE_FILE" ]; then
-            cd "$COMPOSE_DIR" && $DC down 2>/dev/null || docker rm -f "$CONTAINER"
+            if cd "$COMPOSE_DIR"; then
+                "${DC[@]}" down 2>/dev/null || docker rm -f "$CONTAINER"
+            else
+                docker rm -f "$CONTAINER"
+            fi
         else
             docker rm -f "$CONTAINER"
         fi
@@ -327,7 +338,11 @@ do_uninstall() {
     else
         read -rp "Remove Docker image ($IMAGE)? [y/N]: " remove_image
         if [[ "$remove_image" =~ ^[Yy]$ ]]; then
-            docker rmi "$IMAGE" 2>/dev/null && ok "Image removed" || warn "Image not found or still in use by another container"
+            if docker rmi "$IMAGE" 2>/dev/null; then
+                ok "Image removed"
+            else
+                warn "Image not found or still in use by another container"
+            fi
         fi
     fi
 

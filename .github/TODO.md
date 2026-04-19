@@ -16,7 +16,8 @@
 | 2 | Write README.md with full moon node setup guide | ✅ completed | 🟠 HIGH | Synology-specific steps |
 | 3 | Write install.sh — install / update / uninstall modes | ✅ completed | 🟠 HIGH | curl one-liner; syntax-verified |
 | 4 | Merge feature branch to main | ✅ completed | 🟠 HIGH | `claude/research-install-github-qDMDt` → `main` |
-| 5 | Fix install.sh for DSM 7+ shell compatibility | 🟠 in-progress | 🟠 HIGH | grep -oP, mapfile, modprobe path — all broken on BusyBox/DSM 7 |
+| 5 | Fix install.sh for DSM 7+ shell compatibility | ✅ completed | 🟠 HIGH | grep -oP, mapfile, modprobe path — all fixed; merged in PR #7 |
+| 6 | Fix image reference in synology-docker.md | ✅ completed | 🟡 MEDIUM | zerotier/zerotier-one → zyclonite/zerotier throughout |
 
 ---
 

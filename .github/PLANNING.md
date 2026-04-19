@@ -11,8 +11,8 @@
 
 ### DSM 7+ Shell Compatibility Fix — install.sh
 
-**Status**: Phase 2 — Implementation complete, pending review
-**Branch**: _(local edit — needs feature branch)_
+**Status**: ✅ Complete — merged in PR #7
+**Branch**: `fix/dsm7-install-compat`
 
 **Approach**: Audit `install.sh` for DSM 7+ BusyBox compatibility issues and fix all breakage. DSM 7 ships BusyBox utilities alongside GNU coreutils — scripts must not rely on GNU-only features (`grep -P`, `mapfile`) or hardcoded kernel module paths.
 
@@ -22,6 +22,13 @@
 - [2026-04-15] Added `ifconfig` fallback for IP detection — some DSM builds have limited `ip` command
 - [2026-04-15] Fixed `insmod /lib/modules/tun.ko` → dynamic `find /lib/modules -name 'tun.ko*'` — DSM 7 stores kernel modules in versioned subdirectories, not at root
 - [2026-04-15] Cleaned all `&>/dev/null 2>&1` → `>/dev/null 2>&1` — the `&>` bashism doubled stderr redirect redundantly
+
+### synology-docker.md Image Reference Fix
+
+**Status**: ✅ Complete — committed on `claude/zerotier-synology-setup-Uwn2L`
+
+**Decisions Log**:
+- [2026-04-19] Replaced all `zerotier/zerotier-one` references with `zyclonite/zerotier` — the official upstream image is not pre-built for ARM/multi-arch; `zyclonite/zerotier` is the image actually used in install.sh and docker-compose.yml
 
 ### Initial Project Setup — Moon Node for Synology DSM 7+
 
@@ -50,7 +57,9 @@ _(none yet)_
 ## 🤝 Handoff Notes
 
 **For next agent**:
-- `install.sh` has been patched for DSM 7+ compatibility (Task 5 in TODO.md). Changes need to be committed to a feature branch and PR'd.
+- DSM 7+ compatibility fix is merged (PR #7). No further action needed on install.sh.
+- `synology-docker.md` image references corrected to `zyclonite/zerotier` — matches install.sh and docker-compose.yml.
+- All PRs must target the **alpha** branch (rule added to copilot-instructions.md and pull_request_template.md).
 - The `.github/` governance framework was copied from `crashcart/Kali-AI-term` on 2026-04-12.
 - Rule scope has been updated to include `crashcart/zerotierone-moon`.
 

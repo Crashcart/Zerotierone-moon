@@ -1,5 +1,7 @@
 # Zerotierone-moon
 
+<!-- branch-aware: install URLs below must match this branch name. See .github/BRANCH_AWARE_FILES.md -->
+
 A ZeroTier moon node (local relay) for Synology DS918+ running DSM 7+ via Container Manager.
 
 The DS918 sits between two firewalled networks (one port on each). ZeroTier runs on the DS918 as a relay so devices on both networks can reach each other over the ZeroTier overlay — no internet exposure required.
@@ -16,7 +18,7 @@ Network A  ──[eth0]──  DS918 (ZeroTier moon)  ──[eth1]──  Networ
 SSH into the DS918 as root, then run:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/alpha/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh
 ```
 
 The script will:
@@ -32,13 +34,13 @@ The script will:
 Skip all prompts — auto-selects the first detected IP:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh --auto --network <your_network_id>
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/alpha/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh --auto --network <your_network_id>
 ```
 
 Or specify the endpoint IP directly:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh --auto --network abcdef1234567890 --ip 10.0.1.50
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/alpha/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh --auto --network abcdef1234567890 --ip 10.0.1.50
 ```
 
 ### Options
@@ -59,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/ins
 Pull the latest image and restart, preserving your moon config:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh update
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/alpha/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh update
 ```
 
 ---
@@ -69,13 +71,13 @@ curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/ins
 Stop and remove the moon node:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh uninstall
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/alpha/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh uninstall
 ```
 
 You will be prompted before anything is deleted. The data directory (which holds the moon identity) is kept by default. To remove everything including the data directory:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh uninstall --purge
+curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/alpha/install.sh -o /tmp/zt-install.sh && sudo bash /tmp/zt-install.sh uninstall --purge
 ```
 
 ---

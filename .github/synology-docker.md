@@ -38,13 +38,13 @@ For better isolation, create a dedicated bridge network via the Container Manage
 ## 3. Pull the ZeroTier One Image
 
 1. Open **Container Manager** → **Registry**.
-2. Search for **`zerotier/zerotier-one`** and select it. (This is the standard ZeroTier daemon image used for running a moon/root server. `zerotier/zeronsd` is a separate DNS server package and is not needed for this guide.)
+2. Search for **`zyclonite/zerotier`** and select it. This image is pre-built for both x86_64 and ARM, is actively maintained, and is tested on Synology hardware. (`zerotier/zeronsd` is a separate DNS server package and is not needed for this guide.)
 3. Select the image and click **Download** to pull the `latest` tag.
 
 Alternatively, pull via SSH:
 
 ```bash
-docker pull zerotier/zerotier-one:latest
+docker pull zyclonite/zerotier:latest
 ```
 
 ---
@@ -60,7 +60,7 @@ mkdir -p /volume1/docker/zerotier-one
 # Run a temporary container to generate the moon identity
 docker run --rm \
   -v /volume1/docker/zerotier-one:/var/lib/zerotier-one \
-  zerotier/zerotier-one \
+  zyclonite/zerotier \
   zerotier-idtool generate /var/lib/zerotier-one/identity.secret /var/lib/zerotier-one/identity.public
 ```
 
@@ -70,7 +70,7 @@ Generate the Moon definition and sign it:
 # Generate the moon.json template (replace <YOUR_PUBLIC_IP> with your NAS public IP)
 docker run --rm \
   -v /volume1/docker/zerotier-one:/var/lib/zerotier-one \
-  zerotier/zerotier-one \
+  zyclonite/zerotier \
   bash -c "cd /var/lib/zerotier-one && \
     zerotier-idtool initmoon identity.public | \
     sed 's|\"stableEndpoints\": \[\]|\"stableEndpoints\": [\"<YOUR_PUBLIC_IP>/9993\"]|' \
@@ -85,7 +85,7 @@ This produces a `000000<moonID>.moon` file inside `/volume1/docker/zerotier-one/
 ## 5. Run the Moon Container via Container Manager UI
 
 1. Open **Container Manager** → **Container** → **Create**.
-2. **Image:** select `zerotier/zerotier-one:latest`.
+2. **Image:** select `zyclonite/zerotier:latest`.
 3. Under **Advanced Settings**:
    - **Volume:** add `/volume1/docker/zerotier-one` → `/var/lib/zerotier-one`
    - **Network:** select **Host** mode (recommended — allows ZeroTier to fully manage virtual network interfaces). Alternatively, use **Bridge** mode and map UDP port `9993` to the container, but note that bridge mode may limit peer-to-peer NAT traversal performance since ZeroTier cannot directly manage the host network stack.
@@ -107,7 +107,7 @@ docker run -d \
   --cap-add SYS_MODULE \
   --device /dev/net/tun \
   -v /volume1/docker/zerotier-one:/var/lib/zerotier-one \
-  zerotier/zerotier-one:latest
+  zyclonite/zerotier:latest
 ```
 
 ---
