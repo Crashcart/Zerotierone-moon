@@ -1,6 +1,9 @@
 #!/bin/bash
 # ZeroTier Moon Node — Synology DSM 7+ (Container Manager)
 #
+# branch-aware: the URL below must match the branch this file lives on.
+# See .github/BRANCH_AWARE_FILES.md for the full list and promotion checklist.
+#
 # Synology's admin shell is sh (ash) — use this one-liner instead of bash <(...):
 #   curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && bash /tmp/zt-install.sh
 #

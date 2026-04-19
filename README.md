@@ -1,5 +1,7 @@
 # Zerotierone-moon
 
+<!-- branch-aware: install URLs below must match this branch name. See .github/BRANCH_AWARE_FILES.md -->
+
 A ZeroTier moon node (local relay) for Synology DS918+ running DSM 7+ via Container Manager.
 
 The DS918 sits between two firewalled networks (one port on each). ZeroTier runs on the DS918 as a relay so devices on both networks can reach each other over the ZeroTier overlay — no internet exposure required.
