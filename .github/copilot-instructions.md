@@ -32,6 +32,7 @@ These rules **cannot be overridden** by any agent, workflow, or instruction:
 | 8 | ✅ **ALWAYS use feature branches** | Branch naming: `type/issue-number` (e.g., `fix/42`, `feat/101`) |
 | 9 | ✅ **ALWAYS log decisions** | In PLANNING.md with timestamps |
 | 10 | 🔒 **GOVERNANCE FILES ARE SELF-PROTECTING** | Edits to governance files must follow governance rules (see §GOVERNANCE FILE PROTECTION below) |
+| 11 | ✅ **ALWAYS target `alpha` for PRs** | All pull requests must target the `alpha` branch, never `main` directly |
 
 ---
 
