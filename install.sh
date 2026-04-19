@@ -202,7 +202,7 @@ YAML
     info "Generating moon configuration..."
     docker exec "$CONTAINER" sh -c \
         "zerotier-idtool initmoon /var/lib/zerotier-one/identity.public \
-         | sed 's/\"stableEndpoints\":\[\]/\"stableEndpoints\":[\"'"${LOCAL_IP}"'\/9993\"]/' \
+         | sed 's/\"stableEndpoints\":\[\]/\"stableEndpoints\":[\"'""${LOCAL_IP}""'\/9993\"]/' \
          > /var/lib/zerotier-one/moon.json"
 
     info "Signing moon..."
@@ -338,7 +338,11 @@ do_uninstall() {
     else
         read -rp "Remove Docker image ($IMAGE)? [y/N]: " remove_image
         if [[ "$remove_image" =~ ^[Yy]$ ]]; then
-            docker rmi "$IMAGE" 2>/dev/null && ok "Image removed" || warn "Image not found or still in use by another container"
+            if docker rmi "$IMAGE" 2>/dev/null; then
+                ok "Image removed"
+            else
+                warn "Image not found or still in use by another container"
+            fi
         fi
     fi
 
