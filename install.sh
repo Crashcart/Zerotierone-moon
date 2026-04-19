@@ -73,7 +73,11 @@ do_install() {
             [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
         fi
         info "Stopping existing container..."
-        cd "$COMPOSE_DIR" 2>/dev/null && "${DC[@]}" down 2>/dev/null || docker rm -f "$CONTAINER" 2>/dev/null || true
+        if cd "$COMPOSE_DIR" 2>/dev/null; then
+            "${DC[@]}" down 2>/dev/null || docker rm -f "$CONTAINER" 2>/dev/null || true
+        else
+            docker rm -f "$CONTAINER" 2>/dev/null || true
+        fi
     fi
 
     # Check /dev/net/tun
@@ -83,7 +87,7 @@ do_install() {
         if ! modprobe tun 2>/dev/null; then
             # DSM 7 may not have modprobe — search for the module manually
             TUN_KO=$(find /lib/modules -name 'tun.ko*' 2>/dev/null | head -1)
-            [ -n "$TUN_KO" ] && insmod "$TUN_KO" 2>/dev/null || true
+            if [ -n "$TUN_KO" ]; then insmod "$TUN_KO" 2>/dev/null || true; fi
         fi
         [ -c /dev/net/tun ] || error "/dev/net/tun still missing after modprobe. Check DSM kernel modules."
     fi
@@ -117,7 +121,7 @@ YAML
 
     # Pull and start
     info "Pulling image $IMAGE ..."
-    cd "$COMPOSE_DIR"
+    cd "$COMPOSE_DIR" || error "Cannot cd to $COMPOSE_DIR"
     "${DC[@]}" pull
     info "Starting container..."
     "${DC[@]}" up -d
@@ -277,7 +281,7 @@ do_update() {
 
     [ -f "$COMPOSE_FILE" ] || error "No installation found at $COMPOSE_DIR. Run: bash install.sh install"
 
-    cd "$COMPOSE_DIR"
+    cd "$COMPOSE_DIR" || error "Cannot cd to $COMPOSE_DIR"
     info "Pulling latest image..."
     "${DC[@]}" pull
 
@@ -315,7 +319,11 @@ do_uninstall() {
     if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER}$"; then
         info "Stopping and removing container..."
         if [ -f "$COMPOSE_FILE" ]; then
-            cd "$COMPOSE_DIR" && "${DC[@]}" down 2>/dev/null || docker rm -f "$CONTAINER"
+            if cd "$COMPOSE_DIR"; then
+                "${DC[@]}" down 2>/dev/null || docker rm -f "$CONTAINER"
+            else
+                docker rm -f "$CONTAINER"
+            fi
         else
             docker rm -f "$CONTAINER"
         fi

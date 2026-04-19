@@ -53,7 +53,7 @@ Copy this checklist into your PR description when promoting branches:
 ```
 ## Branch-aware file updates
 - [ ] README.md — all 6 install URLs updated from `/<old>/` to `/<new>/`
-- [ ] install.sh line 5 — header comment URL updated
+- [ ] install.sh line 8 — header comment URL updated
 - [ ] grep confirms no stale `/<old>/install.sh` references remain
 ```
 
