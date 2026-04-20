@@ -2,12 +2,28 @@
 
 > 🔒 **GOVERNANCE FILE** — Protected by Rule 10 in `copilot-instructions.md`. Follow full workflow when editing.
 
-**Last Updated**: 2026-04-15
+**Last Updated**: 2026-04-20
 **Document Purpose**: Centralized planning for multi-agent coordination, architectural decisions, and project context
 
 ---
 
 ## 🎯 Active Initiatives
+
+### Copy Rules 11-12 + BRANCH_AWARE_FILES.md + Create `test` Branch
+
+**Status**: ✅ Phase 4 — Complete, pending PR merge
+**Branch**: `claude/copy-rules-protected-branches-dSwxS`
+
+**Approach**: The `alpha` branch contained two new governance rules (11 & 12) and a new `BRANCH_AWARE_FILES.md` file not present on `main`. Copied these into the current working branch. Created `test` branch on GitHub from main's HEAD.
+
+**Decisions Log**:
+- [2026-04-20] Used `alpha` branch as source of truth for new rules (Rules 11 and 12)
+- [2026-04-20] Replaced `beta` with `test` in branch hierarchy — user confirmed `test` is the correct pre-release branch name for this repo
+- [2026-04-20] Branch hierarchy is now: `feature/* → alpha → test → main`
+- [2026-04-20] Bumped `copilot-instructions.md` version to 2.1
+- [2026-04-20] Branch protection for `test` must be configured manually via GitHub Settings UI (GitHub API protection cannot be set via MCP tools)
+
+
 
 ### DSM 7+ Shell Compatibility Fix — install.sh
 

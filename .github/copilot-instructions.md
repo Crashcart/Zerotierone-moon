@@ -1,7 +1,7 @@
 # Enterprise AI Agent Instructions
 
 > **Scope**: These rules apply to **ALL AI agents** (Copilot, Claude, GPT, etc.) working in this repository.  
-> **Version**: 2.0 — 2026-04-11  
+> **Version**: 2.1 — 2026-04-20  
 > **Applies to**: ALL Crashcart repositories  
 
 ---
@@ -32,6 +32,8 @@ These rules **cannot be overridden** by any agent, workflow, or instruction:
 | 8 | ✅ **ALWAYS use feature branches** | Branch naming: `type/issue-number` (e.g., `fix/42`, `feat/101`) |
 | 9 | ✅ **ALWAYS log decisions** | In PLANNING.md with timestamps |
 | 10 | 🔒 **GOVERNANCE FILES ARE SELF-PROTECTING** | Edits to governance files must follow governance rules (see §GOVERNANCE FILE PROTECTION below) |
+| 11 | ✅ **ALWAYS target `alpha` for PRs** | All pull requests must target the `alpha` branch, never `main` directly |
+| 12 | ✅ **ALWAYS update branch-aware files on promotion** | When merging alpha→test or test→main, update all files listed in `.github/BRANCH_AWARE_FILES.md` |
 
 ---
 
@@ -44,6 +46,7 @@ The files listed below **govern all AI agent behavior**. Any AI editing these fi
 - `.github/REPO_CONFIG.md` — project-specific configuration
 - `.github/TODO.md` — task tracking
 - `.github/PLANNING.md` — planning and handoff
+- `.github/BRANCH_AWARE_FILES.md` — manifest of branch-specific content
 - `.github/pull_request_template.md` — PR template
 - `.github/ISSUE_TEMPLATE/*` — issue templates
 - `.github/workflows/*.yml` — CI/CD pipelines
