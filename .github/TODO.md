@@ -2,8 +2,8 @@
 
 > 🔒 **GOVERNANCE FILE** — Protected by Rule 10 in `copilot-instructions.md`.
 
-**Last Updated**: 2026-04-15
-**Current Session**: Antigravity — DSM 7+ compatibility fixes
+**Last Updated**: 2026-04-20
+**Current Session**: Jazzy-Beaver — copy rules + create protected branches
 **Repository**: zerotierone-moon
 
 ---
@@ -17,6 +17,8 @@
 | 3 | Write install.sh — install / update / uninstall modes | ✅ completed | 🟠 HIGH | curl one-liner; syntax-verified |
 | 4 | Merge feature branch to main | ✅ completed | 🟠 HIGH | `claude/research-install-github-qDMDt` → `main` |
 | 5 | Fix install.sh for DSM 7+ shell compatibility | 🟠 in-progress | 🟠 HIGH | grep -oP, mapfile, modprobe path — all broken on BusyBox/DSM 7 |
+| 6 | Copy Rules 11-12 + BRANCH_AWARE_FILES.md from alpha branch into main governance | ✅ completed | 🟠 HIGH | v2.1; hierarchy: feature→alpha→test→main |
+| 7 | Create protected `test` branch on GitHub | ✅ completed | 🟠 HIGH | From main SHA; protection must be set manually in GitHub UI |
 
 ---
 
