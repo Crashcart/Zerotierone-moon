@@ -8,17 +8,18 @@ Automated CI/CD pipeline for the Zerotierone-moon repository.
 Feature Branch (claude/**)
     ↓
     └─→ [Lint] [Docker Validate] [Tests] ✓ or ✗
-         All must pass for PR to main
+         All must pass for PR to alpha
 
-main Branch
+alpha Branch
     ↓
     └─→ Auto-merge from claude/** on approval + passing checks
+         (then promoted alpha → beta → main by humans)
 ```
 
 ## Workflows
 
 ### 1. Tests (`test.yml`)
-**Trigger:** Push to `main` or `claude/**`, PR to `main`
+**Trigger:** Push to `main`, `alpha`, or `claude/**`; PR to `main` or `alpha`
 
 **What it does:**
 - Checks `install.sh` bash syntax (`bash -n`)
@@ -27,7 +28,7 @@ main Branch
 - Confirms governance files are present
 
 ### 2. Lint (`lint.yml`)
-**Trigger:** Push to `main` or `claude/**`, PR to `main`
+**Trigger:** Push to `main`, `alpha`, or `claude/**`; PR to `main` or `alpha`
 
 **What it does:**
 - Validates all YAML files for syntax errors
@@ -35,7 +36,7 @@ main Branch
 - Checks for hardcoded secrets in shell and YAML files
 
 ### 3. Docker Validate (`build.yml`)
-**Trigger:** Push to `main` or `claude/**`, PR to `main`
+**Trigger:** Push to `main`, `alpha`, or `claude/**`; PR to `main` or `alpha`
 
 **What it does:**
 - Validates `docker-compose.yml` syntax via `docker compose config`
@@ -44,15 +45,15 @@ main Branch
 - Confirms `/dev/net/tun` device is mounted
 
 ### 4. Code Review Gate (`code-review-gate.yml`)
-**Trigger:** PR to `main`
+**Trigger:** PR to `main`, `alpha`, or `test`
 
 **What it does:**
-- Conflict detection between PR branch and main
+- Conflict detection between PR branch and target branch
 - Posts a review summary comment with changed files
 - Checks that `TODO.md` and `PLANNING.md` were updated
 
-### 5. Auto-merge claude/**→main (`merge-test-to-main.yml`)
-**Trigger:** PR opened/updated from any `claude/**` branch to `main`
+### 5. Auto-merge claude/**→alpha (`merge-test-to-main.yml`)
+**Trigger:** PR opened/updated from any `claude/**` branch to `alpha`
 
 **Requirements:**
 - At least 1 approval
@@ -78,7 +79,7 @@ git commit -m "fix(install): description"
 # 3. Push — triggers CI
 git push -u origin claude/my-feature
 
-# 4. Create PR to main, get review, merge
+# 4. Create PR to alpha, get review, merge
 ```
 
 ## Troubleshooting
@@ -95,8 +96,8 @@ bash -n install.sh
 
 ### Conflict Check Failing
 ```bash
-git fetch origin main
-git merge --no-commit origin/main
+git fetch origin alpha
+git merge --no-commit origin/alpha
 git merge --abort
 # Resolve conflicts, then push
 ```

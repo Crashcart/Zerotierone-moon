@@ -2,9 +2,9 @@ name: Docker Validate
 
 on:
   push:
-    branches: [ main, 'claude/**' ]
+    branches: [ main, alpha, 'claude/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, alpha ]
 
 jobs:
   build:
