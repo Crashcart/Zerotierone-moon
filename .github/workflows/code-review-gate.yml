@@ -2,7 +2,7 @@ name: Code Review Gate
 
 on:
   pull_request:
-    branches: [ main, test ]
+    branches: [ main, alpha, test ]
     types: [ opened, synchronize, reopened ]
 
 permissions:

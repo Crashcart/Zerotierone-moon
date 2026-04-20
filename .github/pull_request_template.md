@@ -30,6 +30,7 @@ Related to #
 ## Documentation
 - [ ] README.md updated (if needed)
 - [ ] Inline comments added for complex logic
+- [ ] Branch-aware URLs in README.md and install.sh point to the **PR target branch** (see `.github/BRANCH_AWARE_FILES.md`)
 
 ## Planning Agent Sign-Off
 <!-- Was this work planned through the Planning Agent before implementation? -->

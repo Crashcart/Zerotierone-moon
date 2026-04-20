@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ main, 'claude/**' ]
+    branches: [ main, alpha, test, 'claude/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, alpha, test ]
 
 jobs:
   validate:
@@ -28,6 +28,37 @@ jobs:
 
     - name: Check governance files present
       run: |
-        for f in ".github/copilot-instructions.md" ".github/REPO_CONFIG.md" ".github/TODO.md" ".github/PLANNING.md"; do
+        for f in ".github/copilot-instructions.md" ".github/REPO_CONFIG.md" ".github/TODO.md" ".github/PLANNING.md" ".github/BRANCH_AWARE_FILES.md"; do
           [ -f "$f" ] && echo "✓ $f" || { echo "❌ Missing: $f"; exit 1; }
         done
+
+    - name: Check branch-aware URLs match PR target branch
+      if: github.event_name == 'pull_request'
+      run: |
+        TARGET="${{ github.base_ref }}"
+        ERRORS=0
+
+        # Check every raw.githubusercontent.com URL in README.md
+        while IFS= read -r line; do
+          if echo "$line" | grep -q "raw.githubusercontent.com/Crashcart/Zerotierone-moon/"; then
+            if ! echo "$line" | grep -q "/$TARGET/"; then
+              echo "❌ README.md URL does not point to '$TARGET': $line"
+              ERRORS=$((ERRORS + 1))
+            fi
+          fi
+        done < README.md
+
+        # Check install.sh header URL
+        if grep -q "raw.githubusercontent.com/Crashcart/Zerotierone-moon/" install.sh; then
+          if ! grep "raw.githubusercontent.com/Crashcart/Zerotierone-moon/" install.sh | grep -q "/$TARGET/"; then
+            echo "❌ install.sh header URL does not point to '$TARGET'"
+            ERRORS=$((ERRORS + 1))
+          fi
+        fi
+
+        if [ "$ERRORS" -gt 0 ]; then
+          echo "❌ Branch-aware URLs must match the PR target branch: $TARGET"
+          echo "   See .github/BRANCH_AWARE_FILES.md for the full manifest"
+          exit 1
+        fi
+        echo "✓ All branch-aware URLs correctly reference '$TARGET'"

@@ -2,9 +2,9 @@ name: Lint
 
 on:
   push:
-    branches: [ main, 'claude/**' ]
+    branches: [ main, alpha, test, 'claude/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, alpha, test ]
 
 jobs:
   lint:
