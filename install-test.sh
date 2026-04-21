@@ -5,7 +5,7 @@
 # See .github/BRANCH_AWARE_FILES.md for the full list and promotion checklist.
 #
 # Synology's admin shell is sh (ash) — use this one-liner instead of bash <(...):
-#   curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/main/install.sh -o /tmp/zt-install.sh && bash /tmp/zt-install.sh
+#   curl -fsSL https://raw.githubusercontent.com/Crashcart/Zerotierone-moon/test/install-test.sh -o /tmp/zt-install.sh && bash /tmp/zt-install.sh
 #
 # Usage: bash install.sh [ACTION] [OPTIONS]
 #

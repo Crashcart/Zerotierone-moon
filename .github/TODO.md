@@ -19,6 +19,8 @@
 | 5 | Fix install.sh for DSM 7+ shell compatibility | 🟠 in-progress | 🟠 HIGH | grep -oP, mapfile, modprobe path — all broken on BusyBox/DSM 7 |
 | 6 | Copy Rules 11-12 + BRANCH_AWARE_FILES.md from alpha branch into main governance | ✅ completed | 🟠 HIGH | v2.1; hierarchy: feature→alpha→test→main |
 | 7 | Create protected `test` branch on GitHub | ✅ completed | 🟠 HIGH | From main SHA; protection must be set manually in GitHub UI |
+| 8 | Create branch-specific install scripts (install-alpha/beta/test.sh) + Rule 13 | ✅ completed | 🟠 HIGH | v2.2; hierarchy updated to include beta; CI enforces filename+branch |
+| 9 | Create `beta` branch on GitHub | ✅ completed | 🟠 HIGH | From alpha SHA; protection must be set manually in GitHub UI |
 
 ---
 

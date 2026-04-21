@@ -9,6 +9,22 @@
 
 ## 🎯 Active Initiatives
 
+### Branch-Specific Install Scripts + Rule 13 + `beta` Branch
+
+**Status**: ✅ Phase 4 — Complete, pending PR merge
+**Branch**: `claude/copy-rules-protected-branches-dSwxS`
+
+**Approach**: Created dedicated install scripts for each non-main branch (`install-alpha.sh`, `install-beta.sh`, `install-test.sh`). Each script is identical in logic; only the header URL differs. `install.sh` remains as the stable/main installer. README.md updated to reference `install-alpha.sh` on the alpha branch. Updated CI to validate both branch name AND installer filename.
+
+**Decisions Log**:
+- [2026-04-20] `main` uses `install.sh` (no suffix) — all other branches use `install-<branch>.sh`
+- [2026-04-20] Branch hierarchy expanded to include `beta`: `feature/* → alpha → beta → test → main`
+- [2026-04-20] CI check now maps branch → expected filename; unknown branches are skipped with a warning
+- [2026-04-20] `beta` branch created on GitHub from alpha SHA
+- [2026-04-20] Rule 13 added to copilot-instructions.md v2.2
+
+---
+
 ### Copy Rules 11-12 + BRANCH_AWARE_FILES.md + Create `test` Branch
 
 **Status**: ✅ Phase 4 — Complete, pending PR merge

@@ -36,29 +36,44 @@ jobs:
       if: github.event_name == 'pull_request'
       run: |
         TARGET="${{ github.base_ref }}"
+
+        # Map branch → expected installer filename
+        case "$TARGET" in
+          alpha) EXPECTED_INSTALLER="install-alpha.sh" ;;
+          beta)  EXPECTED_INSTALLER="install-beta.sh"  ;;
+          test)  EXPECTED_INSTALLER="install-test.sh"  ;;
+          main)  EXPECTED_INSTALLER="install.sh"        ;;
+          *)     echo "⚠️ Unknown target branch '$TARGET' — skipping branch-aware check"; exit 0 ;;
+        esac
+
         ERRORS=0
 
-        # Check every raw.githubusercontent.com URL in README.md
+        # Check every raw.githubusercontent.com URL in README.md points to correct branch + filename
         while IFS= read -r line; do
           if echo "$line" | grep -q "raw.githubusercontent.com/Crashcart/Zerotierone-moon/"; then
-            if ! echo "$line" | grep -q "/$TARGET/"; then
-              echo "❌ README.md URL does not point to '$TARGET': $line"
+            if ! echo "$line" | grep -q "/$TARGET/$EXPECTED_INSTALLER"; then
+              echo "❌ README.md URL should reference '$TARGET/$EXPECTED_INSTALLER': $line"
               ERRORS=$((ERRORS + 1))
             fi
           fi
         done < README.md
 
-        # Check install.sh header URL
-        if grep -q "raw.githubusercontent.com/Crashcart/Zerotierone-moon/" install.sh; then
-          if ! grep "raw.githubusercontent.com/Crashcart/Zerotierone-moon/" install.sh | grep -q "/$TARGET/"; then
-            echo "❌ install.sh header URL does not point to '$TARGET'"
-            ERRORS=$((ERRORS + 1))
+        # Check the branch installer's own header URL
+        if [ -f "$EXPECTED_INSTALLER" ]; then
+          if grep -q "raw.githubusercontent.com/Crashcart/Zerotierone-moon/" "$EXPECTED_INSTALLER"; then
+            if ! grep "raw.githubusercontent.com/Crashcart/Zerotierone-moon/" "$EXPECTED_INSTALLER" | grep -q "/$TARGET/$EXPECTED_INSTALLER"; then
+              echo "❌ $EXPECTED_INSTALLER header URL should reference '$TARGET/$EXPECTED_INSTALLER'"
+              ERRORS=$((ERRORS + 1))
+            fi
           fi
+        else
+          echo "❌ Expected installer '$EXPECTED_INSTALLER' not found in repo"
+          ERRORS=$((ERRORS + 1))
         fi
 
         if [ "$ERRORS" -gt 0 ]; then
-          echo "❌ Branch-aware URLs must match the PR target branch: $TARGET"
+          echo "❌ Branch-aware URLs must match target branch '$TARGET' and installer '$EXPECTED_INSTALLER'"
           echo "   See .github/BRANCH_AWARE_FILES.md for the full manifest"
           exit 1
         fi
-        echo "✓ All branch-aware URLs correctly reference '$TARGET'"
+        echo "✓ All branch-aware URLs correctly reference '$TARGET/$EXPECTED_INSTALLER'"
