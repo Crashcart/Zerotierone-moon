@@ -13,6 +13,7 @@
 #     install    Set up the moon node from scratch (default)
 #     update     Pull latest image and restart, preserving moon config
 #     uninstall  Stop and remove the moon node
+#     reinstall  Full wipe and fresh install (purges data + moon identity)
 #
 #   Options:
 #     --auto, -a     Fully unattended (auto-select IP, skip all prompts)
@@ -332,9 +333,9 @@ do_uninstall() {
         warn "Container '$CONTAINER' not found — may already be removed"
     fi
 
-    # Remove image?
-    if [ "$AUTO" = true ]; then
-        info "Auto mode: keeping Docker image"
+    # Remove image? Skipped in purge/reinstall mode (reinstall pulls fresh after) and auto mode.
+    if [ "$PURGE" = true ] || [ "$AUTO" = true ]; then
+        info "Keeping Docker image for now"
     else
         read -rp "Remove Docker image ($IMAGE)? [y/N]: " remove_image
         if [[ "$remove_image" =~ ^[Yy]$ ]]; then
@@ -376,6 +377,38 @@ do_uninstall() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# REINSTALL
+# ─────────────────────────────────────────────────────────────────────────────
+do_reinstall() {
+    echo ""
+    echo -e "${BOLD}╔══════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}║   ZeroTier Moon Node — Complete Reinstall║${NC}"
+    echo -e "${BOLD}╚══════════════════════════════════════════╝${NC}"
+    echo ""
+    warn "COMPLETE REINSTALL — this will permanently delete:"
+    warn "  • The ZeroTier container"
+    warn "  • The Docker image (fresh pull on reinstall)"
+    warn "  • All moon data, including the moon node identity"
+    warn ""
+    warn "All client devices will need to orbit the NEW moon ID after reinstall."
+    echo ""
+
+    if [ "$AUTO" != true ]; then
+        read -rp "  Type 'yes' to confirm complete reinstall: " confirm
+        [[ "$confirm" == "yes" ]] || { echo "Aborted."; exit 0; }
+    fi
+
+    PURGE=true
+    do_uninstall
+
+    # Remove image so do_install always pulls a completely fresh copy
+    info "Removing Docker image for clean pull..."
+    docker rmi "$IMAGE" 2>/dev/null && ok "Image removed" || info "Image not cached locally — skipping"
+
+    do_install
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Usage
 # ─────────────────────────────────────────────────────────────────────────────
 usage() {
@@ -386,6 +419,7 @@ usage() {
     echo "    install    Set up ZeroTier moon node (default)"
     echo "    update     Pull latest image and restart, preserving moon config"
     echo "    uninstall  Stop and remove the moon node"
+    echo "    reinstall  Full wipe + fresh install (purges data and moon identity)"
     echo ""
     echo "  Options:"
     echo "    --auto, -a          Run fully unattended (auto-select IP, skip prompts)"
@@ -401,6 +435,8 @@ usage() {
     echo "    bash install.sh --auto --network abc... --ip 10.0.1.50  # Auto + specific IP"
     echo "    bash install.sh update                                  # Pull latest, keep config"
     echo "    bash install.sh uninstall --purge                       # Remove everything"
+    echo "    bash install.sh reinstall                               # Full wipe + fresh install"
+    echo "    bash install.sh reinstall --auto                        # Full wipe, no prompts"
     echo ""
 }
 
@@ -416,7 +452,7 @@ NETWORK=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        install|update|uninstall) ACTION="$1" ;;
+        install|update|uninstall|reinstall) ACTION="$1" ;;
         --auto|-a)  AUTO=true ;;
         --force|-f) FORCE=true ;;
         --purge)    PURGE=true ;;
@@ -445,4 +481,5 @@ case "$ACTION" in
     install)   do_install   ;;
     update)    do_update    ;;
     uninstall) do_uninstall ;;
+    reinstall) do_reinstall ;;
 esac
