@@ -5,10 +5,17 @@
 # moon identity, moons.d/, or network config. Safe to run at any time.
 #
 # Usage:
-#   bash update.sh            — rebuild image, recreate macvlan nets if missing,
-#                               restart container
-#   bash update.sh --no-build — skip rebuild, just recreate nets + restart
-#   bash update.sh --status   — show current status only, no changes
+#   bash update.sh                        — rebuild image, recreate macvlan nets if
+#                                           missing, restart container
+#   bash update.sh --branch <name>        — switch repo to <name> branch first,
+#                                           then rebuild and restart
+#   bash update.sh --no-build             — skip rebuild, just recreate nets + restart
+#   bash update.sh --status               — show current status only, no changes
+#
+# Branch examples:
+#   bash update.sh --branch main          — upgrade to stable release
+#   bash update.sh --branch beta          — upgrade to beta
+#   bash update.sh --branch dev           — upgrade to dev/bleeding-edge
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -28,11 +35,21 @@ command -v docker &>/dev/null || die "Docker not found."
 # ─── Parse args ───────────────────────────────────────────────────────────────
 DO_BUILD=true
 STATUS_ONLY=false
-for arg in "$@"; do
-    case $arg in
+UPGRADE_BRANCH=""
+args=("$@")
+i=0
+while [[ $i -lt ${#args[@]} ]]; do
+    case "${args[$i]}" in
         --no-build)  DO_BUILD=false ;;
         --status)    STATUS_ONLY=true ;;
+        --branch)
+            i=$(( i + 1 ))
+            UPGRADE_BRANCH="${args[$i]:-}"
+            [[ -z "$UPGRADE_BRANCH" ]] && die "--branch requires a branch name"
+            ;;
+        --branch=*)  UPGRADE_BRANCH="${args[$i]#--branch=}" ;;
     esac
+    i=$(( i + 1 ))
 done
 
 # ─── Load config ──────────────────────────────────────────────────────────────
@@ -53,6 +70,19 @@ if $STATUS_ONLY; then
     echo "  Peers     :"
     docker exec "$CONTAINER_NAME" zerotier-cli listpeers 2>/dev/null || echo "    (unavailable)"
     exit 0
+fi
+
+# ─── Upgrade to target branch ─────────────────────────────────────────────────
+if [[ -n "$UPGRADE_BRANCH" ]]; then
+    step "Switching repo to branch: $UPGRADE_BRANCH"
+    command -v git &>/dev/null || die "git not found — cannot switch branches"
+    git -C "$SCRIPT_DIR" fetch origin || die "git fetch failed"
+    CURRENT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD)
+    if [[ "$CURRENT_BRANCH" != "$UPGRADE_BRANCH" ]]; then
+        git -C "$SCRIPT_DIR" checkout "$UPGRADE_BRANCH" || die "git checkout $UPGRADE_BRANCH failed"
+    fi
+    git -C "$SCRIPT_DIR" pull origin "$UPGRADE_BRANCH" || die "git pull failed"
+    ok "Repo updated to branch $UPGRADE_BRANCH ($(git -C "$SCRIPT_DIR" rev-parse --short HEAD))"
 fi
 
 # ─── Guard: verify moon identity is intact ────────────────────────────────────
