@@ -356,13 +356,21 @@ The following are applied automatically by `install.sh` and `entrypoint.sh`:
 |-------------|-------|--------|
 | `NET_RAW` capability | `docker-compose.yml` | Enables iptables raw table (required for NOTRACK) |
 | NOTRACK for UDP 9993 | `config/rules.v4` | Removes ZeroTier from conntrack — prevents 30s timeout cutouts |
-| conntrack UDP timeout → 300s | `entrypoint.sh` | Belt-and-suspenders alongside NOTRACK |
-| 25 MB UDP socket buffers | compose `sysctls` + host `sysctl.conf` | Prevents silent packet drops under load |
+| `*filter` FORWARD rules | `config/rules.v4` | Allows ZT↔LAN forwarding (macvlan has no automatic ACCEPT rules) |
+| Scoped MASQUERADE | `config/rules.v4` | Only NATs ZeroTier-forwarded traffic, not container management traffic |
+| conntrack UDP timeout → 300s | host `sysctl.conf` via `install.sh` | Belt-and-suspenders; must be set on the DSM host (not inside container) |
+| 8 MB UDP socket buffers | compose `sysctls` + host `sysctl.conf` | ~2× BDP for ZT on J3455; 25 MB was oversized and caused cache pressure |
 | Docker healthcheck | `docker-compose.yml` | Auto-restarts container if daemon hangs |
-| `config/local.conf` | mounted into container | Pins port 9993, enables TCP fallback, blacklists Docker interfaces |
-| `fq` qdisc on ZT interface | `entrypoint.sh` | Reduces bufferbloat under sustained load |
+| `config/local.conf` | mounted into container | Pins port 9993, enables TCP fallback, blacklists Docker/ZT/macvlan interfaces |
+| `fq` qdisc on ZT interface | `entrypoint.sh` (after network join) | Reduces bufferbloat under sustained load |
+| Gratuitous ARP on start | `entrypoint.sh` | Clears stale ARP cache on LAN switches immediately after restart |
+| Container-IP routing rules | `setuproutes.sh` | ZeroTier daemon's own keepalives/handshakes egress the correct NIC |
+| `ip rule` flush on restart | `setuproutes.sh` | Prevents duplicate policy rules accumulating across container restarts |
+| Main-table fallback route | `setuproutes.sh` | Allows ZeroTier to reach public planet/root servers outside local subnets |
 | GRO/TSO/GSO NIC offload | `install.sh` ethtool | Lets J3455 hardware batch packets |
 | Alpine 3.21 | `Dockerfile` | Newer zerotier-one package (past 1.14.0 Synology bug) |
+
+> **macvlan + port forwarding:** The `ports:` directive in `docker-compose.yml` has **no effect** under macvlan networking — Docker does not create DNAT rules for macvlan containers. Configure your router to forward **UDP 9993** directly to the container's macvlan IP (e.g. `192.168.1.253`). `portMappingEnabled: true` in `local.conf` will attempt UPnP/NAT-PMP automatically if your router supports it.
 
 See `.github/STABILITY.md` for full diagnostic commands.
 

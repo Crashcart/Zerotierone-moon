@@ -264,3 +264,35 @@ docker exec zerotier-moon cat /proc/net/dev | grep zt
 cat /proc/sys/net/netfilter/nf_conntrack_count
 cat /proc/sys/net/netfilter/nf_conntrack_max
 ```
+
+---
+
+## Sr Network Engineer Review Findings (2026-05-12)
+
+A full network engineering review identified the following issues, all fixed in the same session:
+
+### Fixed
+
+| # | Finding | Fix |
+|---|---------|-----|
+| 1 | `setuproutes.sh` had literal `172.16.x.*` placeholder values — `ip route add` failed silently, eth1 policy routing was dead | `install.sh` generates the file with real values; `config/setuproutes.sh` updated as reference template |
+| 2 | `ip rule add` entries were not idempotent — duplicate rules accumulated on every container restart | Added `ip rule del table ISP_1/ISP_2` flush before re-adding |
+| 3 | No `ip rule` entries for the container's own source IPs — ZeroTier daemon outbound traffic (keepalives, planet pings) used main table and could egress the wrong NIC | Added `ip rule add from $IP1 table ISP_1 priority 98` and `from $IP2 table ISP_2 priority 99` |
+| 4 | No main-table default route fallback — ZeroTier traffic to public planet servers (not matching any /24 rule) was black-holed | Added `ip route replace default via $P1 metric 200` to main table |
+| 5 | `conntrack UDP timeout` sysctl writes silently failed — `net.netfilter.*` is in the HOST network namespace, inaccessible from a namespaced container | Moved to `install.sh` host sysctl.conf; `entrypoint.sh` now logs clearly if write fails |
+| 6 | No `*filter` FORWARD rules in `rules.v4` — Docker macvlan does not inject ACCEPT rules; ZeroTier relay/gateway traffic (zt+ ↔ eth0/eth1) may be dropped by default FORWARD DROP | Added explicit FORWARD ACCEPT rules for zt+↔eth0 and zt+↔eth1 in both directions |
+| 7 | MASQUERADE rules too broad (`-I POSTROUTING -o eth0 -j MASQUERADE`) — all traffic on eth0/eth1 was NAT'd, not just ZeroTier-forwarded traffic | Scoped with `-i zt+` in POSTROUTING to match only forwarded ZT flows |
+| 8 | `ports: 9993:9993/udp` in `docker-compose.yml` is dead configuration under macvlan | Replaced with a comment; router port-forward documented |
+| 9 | `fq` qdisc applied before `zerotier-cli join` — the `zt*` interface does not exist yet on first start | Moved qdisc setup to after the join block; logs a note if no interface found |
+| 10 | No gratuitous ARP on container start — ARP cache stale for up to 300s after restart | Added `arping -A -c 3` for each physical interface in `entrypoint.sh` |
+| 11 | `"zt"` missing from `interfacePrefixBlacklist` in `local.conf` — ZeroTier could probe its own interfaces as candidate paths | Added `"zt"` and `"macvlan"` to the blacklist |
+| 12 | 25 MB socket buffers oversized for J3455 + ZeroTier (~200-600 Mbps effective throughput) — caused unnecessary kernel cache pressure | Reduced to 8 MB (≈ 2× BDP at 300 Mbps / 100ms RTT) |
+
+### Known Limitations (architectural — no fix without major redesign)
+
+| # | Limitation | Notes |
+|---|-----------|-------|
+| A | **macvlan host isolation** — the NAS host cannot communicate with the ZeroTier container via its macvlan IP | `docker exec` works via Unix socket; management via Container Manager UI is unaffected. DSM services cannot reach the container by IP directly. |
+| B | **No eth1 failover** — if eth1 goes down, ISP_2 table still routes via dead gateway; ZeroTier path reconverges in ~125s | For resilience, add a link-monitor script that flushes the ISP_2 table when eth1 loses carrier |
+| C | **`ports:` under macvlan is a no-op** — upstream router must be manually configured to forward UDP 9993 to the container's macvlan IP | Document in README; `portMappingEnabled: true` in `local.conf` handles UPnP if the router supports it |
+| D | **SYS_ADMIN capability is broad** — only required if the sysctl writes in entrypoint.sh need host-ns access; could be dropped now that conntrack tuning moved to host | Consider dropping SYS_ADMIN in a future hardening pass |
