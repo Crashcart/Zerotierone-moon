@@ -2,12 +2,36 @@
 
 > 🔒 **GOVERNANCE FILE** — Protected by Rule 10 in `copilot-instructions.md`. Follow full workflow when editing.
 
-**Last Updated**: 2026-04-15
+**Last Updated**: 2026-05-12
 **Document Purpose**: Centralized planning for multi-agent coordination, architectural decisions, and project context
 
 ---
 
 ## 🎯 Active Initiatives
+
+### Stability & Throughput Improvements + .github Audit
+
+**Status**: ✅ Complete — merged to dev (PR #11, 2026-05-12)
+**Branch**: `claude/add-synology-zerotier-todo-B0Tup`
+
+**Approach**: Implement all 7 stability fixes and 5 throughput improvements documented in
+`STABILITY.md`, plus audit and update all `.github/` files for correctness.
+
+**Decisions Log**:
+- [2026-05-12] Alpine 3.19 → 3.21 in Dockerfile — newer zerotier-one avoids 1.14.0 Synology bug
+- [2026-05-12] Added NET_RAW cap — required for iptables raw table (NOTRACK rules)
+- [2026-05-12] Added NOTRACK in rules.v4 — removes ZeroTier UDP from conntrack (fixes 30s timeout cutouts)
+- [2026-05-12] Added 25 MB UDP socket buffers in compose sysctls and host sysctl.conf
+- [2026-05-12] Added Docker healthcheck — auto-restarts container if daemon hangs (known DSM 7.2 issue)
+- [2026-05-12] Added local.conf — pins port 9993, enables TCP fallback, blacklists Docker interfaces
+- [2026-05-12] Added conntrack timeout 300s and fq qdisc in entrypoint.sh
+- [2026-05-12] Added ethtool NIC offload (GRO/TSO/GSO) in install.sh
+- [2026-05-12] Added update.sh with --branch flag for safe branch upgrades
+- [2026-05-12] Fixed install.sh to generate full compose with all stability settings + copy local.conf
+- [2026-05-12] Updated all CI workflows to target correct branches (dev/alpha/beta/main, removed stale test branch)
+- [2026-05-12] Updated build.yml checks for custom zerotier-moon image and macvlan networking
+
+---
 
 ### DSM 7+ Shell Compatibility Fix — install.sh
 
@@ -57,11 +81,12 @@ _(none yet)_
 ## 🤝 Handoff Notes
 
 **For next agent**:
-- DSM 7+ compatibility fix is merged (PR #7). No further action needed on install.sh.
-- `synology-docker.md` image references corrected to `zyclonite/zerotier` — matches install.sh and docker-compose.yml.
-- All PRs must target the **alpha** branch (rule added to copilot-instructions.md and pull_request_template.md).
-- The `.github/` governance framework was copied from `crashcart/Kali-AI-term` on 2026-04-12.
-- Rule scope has been updated to include `crashcart/zerotierone-moon`.
+- DSM 7+ compatibility fix is merged (PR #7). No further action needed on install.sh compatibility.
+- Project now uses a **custom `zerotier-moon` image** built from `Dockerfile` (Alpine 3.21) — NOT `zyclonite/zerotier` or `zerotier/zerotier-synology`.
+- **Branch hierarchy**: `dev → alpha → beta → main`. All automated claude/** PRs target `dev`. Promotions to alpha/beta/main require explicit human instruction.
+- Stability improvements are complete — see `STABILITY.md` and `RESEARCH.md` for details.
+- CI workflows updated: all now target `dev/alpha/beta/main` branches; stale `test` branch reference removed.
+- `install.sh` now generates a fully-featured docker-compose.yml including NET_RAW, healthcheck, sysctls, and local.conf mount.
 
 ---
 

@@ -322,6 +322,52 @@ Add a rule: **Allow** | Source: Any | Port: 9993 | Protocol: UDP
 
 ---
 
+## Updating
+
+Use `update.sh` to safely rebuild and restart without touching the moon identity:
+
+```sh
+# Rebuild image and restart (identity is backed up automatically)
+sudo bash update.sh
+
+# Skip rebuild, just restart container (e.g. after a reboot)
+sudo bash update.sh --no-build
+
+# Upgrade to a different branch before rebuilding
+sudo bash update.sh --branch main   # stable
+sudo bash update.sh --branch beta
+sudo bash update.sh --branch dev    # latest
+
+# Check current status only
+sudo bash update.sh --status
+```
+
+`update.sh` always verifies `identity.secret` exists before doing anything, backs up the
+moon identity to a timestamped directory, and recreates macvlan networks if they were lost
+on reboot.
+
+---
+
+## Stability Tuning
+
+The following are applied automatically by `install.sh` and `entrypoint.sh`:
+
+| Improvement | Where | Effect |
+|-------------|-------|--------|
+| `NET_RAW` capability | `docker-compose.yml` | Enables iptables raw table (required for NOTRACK) |
+| NOTRACK for UDP 9993 | `config/rules.v4` | Removes ZeroTier from conntrack — prevents 30s timeout cutouts |
+| conntrack UDP timeout → 300s | `entrypoint.sh` | Belt-and-suspenders alongside NOTRACK |
+| 25 MB UDP socket buffers | compose `sysctls` + host `sysctl.conf` | Prevents silent packet drops under load |
+| Docker healthcheck | `docker-compose.yml` | Auto-restarts container if daemon hangs |
+| `config/local.conf` | mounted into container | Pins port 9993, enables TCP fallback, blacklists Docker interfaces |
+| `fq` qdisc on ZT interface | `entrypoint.sh` | Reduces bufferbloat under sustained load |
+| GRO/TSO/GSO NIC offload | `install.sh` ethtool | Lets J3455 hardware batch packets |
+| Alpine 3.21 | `Dockerfile` | Newer zerotier-one package (past 1.14.0 Synology bug) |
+
+See `.github/STABILITY.md` for full diagnostic commands.
+
+---
+
 ## References
 
 - [Synology | ZeroTier Docs](https://docs.zerotier.com/synology/)

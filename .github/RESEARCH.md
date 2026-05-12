@@ -204,18 +204,28 @@ GitHub: https://github.com/zerotier/zeronsd
 
 ---
 
-## 11. Open Action Items
+## 11. Action Items
+
+### ✅ Completed
 
 - [x] Add `NET_RAW` cap to `docker-compose.yml` and `install.sh`
-- [ ] Pin ZeroTier version in Dockerfile — avoid 1.14.0 bug
-- [ ] Add `local.conf` to `config/` with port pinning + TCP fallback
-- [ ] Add conntrack bypass (NOTRACK) for UDP 9993 in `config/rules.v4`
-- [ ] Add UDP socket buffer tuning to `install.sh` and compose `sysctls`
-- [ ] Add Docker healthcheck using `zerotier-cli status`
-- [ ] Add ZeroNSD as second compose service
-- [ ] Add managed routes instructions to README
-- [ ] Port forward UDP 9993 on router if serving external clients
-- [ ] Evaluate `seedgou/zerotier-moon` or `rwv/docker-zerotier-moon` as simpler alternatives
+- [x] Upgrade Alpine 3.19 → 3.21 in `Dockerfile` (post-1.14.0 zerotier-one package, avoids Synology listnetworks bug)
+- [x] Add `config/local.conf` with `primaryPort: 9993`, TCP fallback, interface blacklist — mounted in compose and copied by install.sh
+- [x] Add conntrack bypass (`NOTRACK`) for UDP 9993 in `config/rules.v4` and generated rules in `install.sh`
+- [x] Add UDP socket buffer tuning — 25 MB `rmem_max`/`wmem_max` in compose `sysctls` and host `/etc/sysctl.conf` via `install.sh`
+- [x] Add Docker healthcheck using `zerotier-cli status` (30s interval, 3 retries)
+- [x] Add conntrack UDP timeout → 300s in `entrypoint.sh` (belt-and-suspenders alongside NOTRACK)
+- [x] Add `fq` qdisc on ZeroTier interface in `entrypoint.sh` (reduces bufferbloat under load)
+- [x] Add `iputils` to `Dockerfile` for in-container diagnostics
+- [x] Add NIC offload tuning (GRO/TSO/GSO via ethtool) in `install.sh`
+- [x] Add `update.sh` with `--branch <name>` flag, identity backup, macvlan recreation
+
+### Remaining / Out of Scope
+
+- [ ] Add ZeroNSD as second compose service (out of scope for this deployment)
+- [ ] Add managed routes instructions to README (optional enhancement)
+- [ ] Port forward UDP 9993 on router if serving external clients (user responsibility)
+- [ ] Evaluate `seedgou/zerotier-moon` or `rwv/docker-zerotier-moon` as simpler alternatives (not needed — custom image is working well)
 
 ---
 
