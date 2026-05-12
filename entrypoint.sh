@@ -28,10 +28,25 @@ for i in $(seq 1 $ZT_TIMEOUT); do
     sleep 1
 done
 
+# ─── Increase conntrack UDP timeout ───────────────────────────────────────────
+# Default 30s UDP conntrack timeout is shorter than ZeroTier's ~25s keepalive;
+# under jitter the flow expires just before the keepalive, causing cutouts.
+sysctl -w net.netfilter.nf_conntrack_udp_timeout=300 &>/dev/null || true
+sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=300 &>/dev/null || true
+
+# ─── Set fq qdisc on ZeroTier interface ───────────────────────────────────────
+# fq (fair queuing) replaces the default fq_codel, providing per-flow pacing
+# and keeping latency low under load (reduces bufferbloat on the ZT interface).
+ZT_IF=$(ip link show | awk -F': ' '/^[0-9]+: zt/{print $2; exit}')
+if [[ -n "${ZT_IF:-}" ]]; then
+    tc qdisc replace dev "$ZT_IF" root fq 2>/dev/null || true
+    log "Set fq qdisc on $ZT_IF"
+fi
+
 # ─── Apply iptables rules ──────────────────────────────────────────────────────
 if [[ -f /etc/iptables/rules.v4 ]]; then
-    log "Applying iptables rules..."
-    iptables-restore < /etc/iptables/rules.v4 || log "WARNING: iptables-restore failed (may need NET_ADMIN cap)"
+    log "Applying iptables rules (including NOTRACK for UDP 9993)..."
+    iptables-restore < /etc/iptables/rules.v4 || log "WARNING: iptables-restore failed (may need NET_ADMIN/NET_RAW cap)"
 fi
 
 # ─── Apply dual-NIC routing ────────────────────────────────────────────────────
@@ -95,6 +110,11 @@ if [[ "${GENERATE_MOON:-false}" == "true" ]]; then
         log "Moon ID: $MOON_ID"
         log "Clients: zerotier-cli orbit $MOON_ID $MOON_ID"
     fi
+fi
+
+# ─── Log active local.conf ────────────────────────────────────────────────────
+if [[ -f "$ZT_HOME/local.conf" ]]; then
+    log "local.conf loaded: $(cat "$ZT_HOME/local.conf" | tr -d '\n')"
 fi
 
 # ─── Keep container alive — wait on ZeroTier process ─────────────────────────
