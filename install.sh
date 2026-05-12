@@ -107,13 +107,20 @@ fi
 sysctl -w net.ipv4.ip_forward=1 &>/dev/null
 ok "IP forwarding active"
 
-# Host-level UDP socket buffers — ZeroTier drops packets silently when the
-# default ~212 KB buffers fill under load; 25 MB eliminates this.
+# Host-level kernel tuning — applied persistently to /etc/sysctl.conf.
+# Socket buffers: 8 MB rmem/wmem is ~2× BDP for ZeroTier on 1GbE (practical
+# ZT throughput ~200-600 Mbps on J3455; 25 MB was oversized and caused cache
+# pressure). Conntrack timeout: ZeroTier keepalive fires every ~25s; the
+# default 30s UDP timeout can expire just before the keepalive under jitter.
+# NOTE: net.netfilter sysctls live in the HOST network namespace — they cannot
+# be reliably set from inside the container, so we set them here at install time.
 for param in \
-    "net.core.rmem_max=26214400" \
-    "net.core.wmem_max=26214400" \
+    "net.core.rmem_max=8388608" \
+    "net.core.wmem_max=8388608" \
     "net.core.netdev_max_backlog=5000" \
-    "net.ipv4.udp_mem=102400 873800 26214400"; do
+    "net.ipv4.udp_mem=102400 873800 8388608" \
+    "net.netfilter.nf_conntrack_udp_timeout=300" \
+    "net.netfilter.nf_conntrack_udp_timeout_stream=300"; do
     key="${param%%=*}"
     if grep -q "^${key}" /etc/sysctl.conf 2>/dev/null; then
         ok "$key already set in /etc/sysctl.conf"
@@ -162,16 +169,30 @@ P2_NET="${LAN2_SUBNET}"
 TBL1="ISP_1"
 TBL2="ISP_2"
 
-ip route add \$P1_NET dev \$IF1 src \$IP1 table \$TBL1 2>/dev/null || true
-ip route add default via \$P1 table \$TBL1 2>/dev/null || true
+# Flush before re-adding — container restarts must not accumulate duplicate rules
+ip rule del table \$TBL1 2>/dev/null || true
+ip rule del table \$TBL2 2>/dev/null || true
 
-ip route add \$P2_NET dev \$IF2 src \$IP2 table \$TBL2 2>/dev/null || true
-ip route add default via \$P2 table \$TBL2 2>/dev/null || true
+# Subnet return-path rules
+ip rule add from \$P1_NET table \$TBL1 priority 100 2>/dev/null || true
+ip rule add from \$P2_NET table \$TBL2 priority 101 2>/dev/null || true
 
-ip rule add from \$P1_NET table \$TBL1 2>/dev/null || true
-ip rule add from \$P2_NET table \$TBL2 2>/dev/null || true
+# Container-IP rules — ZeroTier daemon outbound (keepalives, handshakes)
+# is sourced from the container's own IP, not a client subnet address
+ip rule add from \$IP1 table \$TBL1 priority 98 2>/dev/null || true
+ip rule add from \$IP2 table \$TBL2 priority 99 2>/dev/null || true
 
-echo "Routing rules applied (LAN1=\$IF1, LAN2=\$IF2)"
+# Per-table routes
+ip route replace \$P1_NET dev \$IF1 src \$IP1 table \$TBL1 2>/dev/null || true
+ip route replace default via \$P1 table \$TBL1 2>/dev/null || true
+
+ip route replace \$P2_NET dev \$IF2 src \$IP2 table \$TBL2 2>/dev/null || true
+ip route replace default via \$P2 table \$TBL2 2>/dev/null || true
+
+# Main table fallback — needed for ZeroTier to reach public planets/roots
+ip route replace default via \$P1 metric 200 2>/dev/null || true
+
+echo "[setuproutes] Applied (LAN1=\$IF1 \$IP1, LAN2=\$IF2 \$IP2)"
 EOF
 chmod +x "$DATA_DIR/zerotier-one/setuproutes.sh"
 ok "setuproutes.sh"
@@ -189,15 +210,32 @@ ok "rt_tables"
 
 # rules.v4 — with NOTRACK to bypass conntrack for ZeroTier UDP
 cat > "$DATA_DIR/iptables/rules.v4" <<EOF
+# Bypass conntrack for ZeroTier UDP — prevents 30s timeout expiring between
+# ZeroTier keepalives (~25s), which causes brief cutouts under jitter.
 *raw
 -A PREROUTING -p udp --dport 9993 -j NOTRACK
 -A OUTPUT -p udp --sport 9993 -j NOTRACK
 COMMIT
 
+# Allow forwarding between ZeroTier overlay and physical NICs.
+# Docker macvlan does not inject FORWARD ACCEPT rules automatically.
+# NOTRACK'd flows appear as UNTRACKED state, so the ctstate ESTABLISHED
+# rule does not match them — the explicit zt+/eth interface rules do.
+*filter
+-A FORWARD -i zt+ -o ${LAN1_IF} -j ACCEPT
+-A FORWARD -i zt+ -o ${LAN2_IF} -j ACCEPT
+-A FORWARD -i ${LAN1_IF} -o zt+ -j ACCEPT
+-A FORWARD -i ${LAN2_IF} -o zt+ -j ACCEPT
+-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+COMMIT
+
+# MASQUERADE scoped to ZeroTier-forwarded traffic only.
+# -i zt+ in POSTROUTING matches packets forwarded FROM the ZT interface.
+# This avoids masquerading the container's own management traffic.
 *nat
--I POSTROUTING -o zt+ -j MASQUERADE
--I POSTROUTING -o ${LAN1_IF} -j MASQUERADE
--I POSTROUTING -o ${LAN2_IF} -j MASQUERADE
+-A POSTROUTING -i zt+ -o ${LAN1_IF} -j MASQUERADE
+-A POSTROUTING -i zt+ -o ${LAN2_IF} -j MASQUERADE
+-A POSTROUTING -o zt+ -j MASQUERADE
 COMMIT
 EOF
 ok "rules.v4"
@@ -249,8 +287,8 @@ services:
       - NET_RAW
       - SYS_ADMIN
     sysctls:
-      net.core.rmem_max: 26214400
-      net.core.wmem_max: 26214400
+      net.core.rmem_max: 8388608
+      net.core.wmem_max: 8388608
       net.core.netdev_max_backlog: 5000
       net.ipv4.udp_rmem_min: 8192
       net.ipv4.udp_wmem_min: 8192
@@ -265,8 +303,9 @@ services:
         ipv4_address: ${LAN1_CONTAINER_IP}
       macvlan-lan2:
         ipv4_address: ${LAN2_CONTAINER_IP}
-    ports:
-      - "9993:9993/udp"
+    # NOTE: 'ports' has no effect under macvlan networking — Docker does not
+    # create DNAT rules for macvlan containers. Port 9993/UDP must be
+    # forwarded on the upstream router directly to ${LAN1_CONTAINER_IP}.
     volumes:
       - ${DATA_DIR}/zerotier-one:/var/lib/zerotier-one
       - ${DATA_DIR}/iptables:/etc/iptables

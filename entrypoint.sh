@@ -28,24 +28,22 @@ for i in $(seq 1 $ZT_TIMEOUT); do
     sleep 1
 done
 
-# ─── Increase conntrack UDP timeout ───────────────────────────────────────────
-# Default 30s UDP conntrack timeout is shorter than ZeroTier's ~25s keepalive;
-# under jitter the flow expires just before the keepalive, causing cutouts.
-sysctl -w net.netfilter.nf_conntrack_udp_timeout=300 &>/dev/null || true
-sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=300 &>/dev/null || true
-
-# ─── Set fq qdisc on ZeroTier interface ───────────────────────────────────────
-# fq (fair queuing) replaces the default fq_codel, providing per-flow pacing
-# and keeping latency low under load (reduces bufferbloat on the ZT interface).
-ZT_IF=$(ip link show | awk -F': ' '/^[0-9]+: zt/{print $2; exit}')
-if [[ -n "${ZT_IF:-}" ]]; then
-    tc qdisc replace dev "$ZT_IF" root fq 2>/dev/null || true
-    log "Set fq qdisc on $ZT_IF"
+# ─── Conntrack UDP timeout ────────────────────────────────────────────────────
+# net.netfilter sysctls live in the HOST network namespace, not the container's.
+# These writes will silently fail in a namespaced container on DSM 7 even with
+# SYS_ADMIN. The correct fix is to set these on the host via install.sh (which
+# writes them to /etc/sysctl.conf). We attempt here as a best-effort for
+# environments where the container does have host-ns access (e.g. --net=host).
+if sysctl -w net.netfilter.nf_conntrack_udp_timeout=300 2>/dev/null; then
+    sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=300 2>/dev/null || true
+    log "conntrack UDP timeout set to 300s"
+else
+    log "NOTE: conntrack UDP timeout not writable from container — set by install.sh on host"
 fi
 
 # ─── Apply iptables rules ──────────────────────────────────────────────────────
 if [[ -f /etc/iptables/rules.v4 ]]; then
-    log "Applying iptables rules (including NOTRACK for UDP 9993)..."
+    log "Applying iptables rules (NOTRACK + FORWARD + scoped MASQUERADE)..."
     iptables-restore < /etc/iptables/rules.v4 || log "WARNING: iptables-restore failed (may need NET_ADMIN/NET_RAW cap)"
 fi
 
@@ -54,6 +52,18 @@ if [[ -f "$ZT_HOME/setuproutes.sh" ]]; then
     log "Applying dual-NIC routing rules..."
     bash "$ZT_HOME/setuproutes.sh" || log "WARNING: setuproutes.sh failed — check interface names"
 fi
+
+# ─── Send gratuitous ARP to clear stale ARP cache on LAN switches ─────────────
+# After a container restart, LAN switches hold the previous MAC mapping for
+# up to 300s. Gratuitous ARP clears that immediately.
+for iface in eth0 eth1; do
+    ip addr show dev "$iface" &>/dev/null 2>&1 || continue
+    ip_addr=$(ip -4 addr show dev "$iface" | awk '/inet / {split($2,a,"/"); print a[1]; exit}')
+    if [[ -n "${ip_addr:-}" ]]; then
+        arping -A -c 3 -I "$iface" "$ip_addr" 2>/dev/null || true
+        log "Sent gratuitous ARP for $ip_addr on $iface"
+    fi
+done
 
 # ─── Join ZeroTier network(s) ─────────────────────────────────────────────────
 if [[ -n "${NETWORK_IDS:-}" ]]; then
@@ -112,9 +122,23 @@ if [[ "${GENERATE_MOON:-false}" == "true" ]]; then
     fi
 fi
 
+# ─── Set fq qdisc on ZeroTier interface ───────────────────────────────────────
+# Must run AFTER network join — the zt* interface is created only once ZeroTier
+# has joined a network. On first-ever start, the interface may not exist yet;
+# subsequent restarts will find it immediately.
+# fq (fair queuing) replaces the default fq_codel, providing per-flow pacing
+# and keeping latency low under load (reduces bufferbloat on the ZT interface).
+ZT_IF=$(ip link show 2>/dev/null | awk -F': ' '/^[0-9]+: zt/{print $2; exit}')
+if [[ -n "${ZT_IF:-}" ]]; then
+    tc qdisc replace dev "$ZT_IF" root fq 2>/dev/null || true
+    log "Set fq qdisc on $ZT_IF"
+else
+    log "NOTE: No ZeroTier interface found yet — fq qdisc will apply on next restart after network join"
+fi
+
 # ─── Log active local.conf ────────────────────────────────────────────────────
 if [[ -f "$ZT_HOME/local.conf" ]]; then
-    log "local.conf loaded: $(cat "$ZT_HOME/local.conf" | tr -d '\n')"
+    log "local.conf loaded: $(tr -d '\n' < "$ZT_HOME/local.conf")"
 fi
 
 # ─── Keep container alive — wait on ZeroTier process ─────────────────────────

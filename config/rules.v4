@@ -1,17 +1,38 @@
 # iptables rules for ZeroTier gateway
 # Map into container: -v /volume1/docker/zerotier/iptables:/etc/iptables
 # File path inside container: /etc/iptables/rules.v4
+#
+# NOTE: This file is a reference template. install.sh writes the production
+# copy to $DATA_DIR/iptables/rules.v4 with actual interface names substituted.
 
-# Bypass conntrack for ZeroTier UDP — prevents 30s conntrack timeout expiring
-# between ZeroTier keepalives (~25s), which causes brief cutouts under load.
+# Bypass conntrack for ZeroTier UDP — prevents the default 30s conntrack
+# timeout expiring between ZeroTier keepalives (~25s), which causes brief
+# cutouts under jitter. NOTRACK flows skip NAT lookup entirely.
 *raw
 -A PREROUTING -p udp --dport 9993 -j NOTRACK
 -A OUTPUT -p udp --sport 9993 -j NOTRACK
 COMMIT
 
-# Masquerade traffic leaving via ZeroTier interface and both physical NICs.
+# Allow forwarding between ZeroTier overlay and physical NICs.
+# Docker macvlan does NOT inject FORWARD ACCEPT rules automatically.
+# NOTRACK'd ZeroTier flows have ctstate UNTRACKED so the ctstate rule
+# below does not match them — the explicit interface rules do.
+*filter
+-A FORWARD -i zt+ -o eth0 -j ACCEPT
+-A FORWARD -i zt+ -o eth1 -j ACCEPT
+-A FORWARD -i eth0 -o zt+ -j ACCEPT
+-A FORWARD -i eth1 -o zt+ -j ACCEPT
+-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+COMMIT
+
+# MASQUERADE scoped to ZeroTier-forwarded traffic only.
+# Using -i zt+ in POSTROUTING restricts to packets that were forwarded
+# FROM the ZeroTier interface — not the container's own management traffic.
+# -A (append) used instead of -I (insert) since iptables-restore flushes
+# the table before loading, making insert vs append equivalent but -A is
+# clearer about intent.
 *nat
--I POSTROUTING -o zt+ -j MASQUERADE
--I POSTROUTING -o eth0 -j MASQUERADE
--I POSTROUTING -o eth1 -j MASQUERADE
+-A POSTROUTING -i zt+ -o eth0 -j MASQUERADE
+-A POSTROUTING -i zt+ -o eth1 -j MASQUERADE
+-A POSTROUTING -o zt+ -j MASQUERADE
 COMMIT
