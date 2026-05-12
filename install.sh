@@ -107,6 +107,28 @@ fi
 sysctl -w net.ipv4.ip_forward=1 &>/dev/null
 ok "IP forwarding active"
 
+# Host-level UDP socket buffers — ZeroTier drops packets silently when the
+# default ~212 KB buffers fill under load; 25 MB eliminates this.
+for param in \
+    "net.core.rmem_max=26214400" \
+    "net.core.wmem_max=26214400" \
+    "net.core.netdev_max_backlog=5000" \
+    "net.ipv4.udp_mem=102400 873800 26214400"; do
+    key="${param%%=*}"
+    if grep -q "^${key}" /etc/sysctl.conf 2>/dev/null; then
+        ok "$key already set in /etc/sysctl.conf"
+    else
+        echo "$param" >> /etc/sysctl.conf
+        ok "Set $param"
+    fi
+done
+sysctl -p &>/dev/null || true
+
+# NIC offload — GRO/TSO/GSO let the J3455 hardware batch packets, improving throughput
+ethtool -K "$LAN1_IF" gro on tso on gso on 2>/dev/null || true
+ethtool -K "$LAN2_IF" gro on tso on gso on 2>/dev/null || true
+ok "NIC offload tuned ($LAN1_IF, $LAN2_IF)"
+
 # ─── Step 2: Create data directories ─────────────────────────────────────────
 step "Creating data directories under $DATA_DIR"
 

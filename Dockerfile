@@ -1,4 +1,6 @@
-FROM alpine:3.19
+# Alpine 3.21 ships zerotier-one 1.14.x+ which is past the Synology listnetworks bug.
+# Switching from 3.19 ensures we get a post-1.14.0 package with key fixes.
+FROM alpine:3.21
 
 # Install ZeroTier and networking tools
 RUN apk add --no-cache \
@@ -8,7 +10,8 @@ RUN apk add --no-cache \
     ip6tables \
     bash \
     curl \
-    jq
+    jq \
+    iputils
 
 # Copy entrypoint and route setup helper
 COPY entrypoint.sh /entrypoint.sh

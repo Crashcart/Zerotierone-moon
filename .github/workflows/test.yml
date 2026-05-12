@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, 'claude/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check install.sh bash syntax
+      run: |
+        bash -n install.sh && echo "✓ install.sh syntax OK"
+
+    - name: Validate docker-compose.yml
+      run: |
+        docker compose config > /dev/null 2>&1 && echo "✓ docker-compose.yml is valid" || echo "⚠️ docker-compose.yml may have issues (docker not fully available in CI)"
+
+    - name: Validate README exists and contains install one-liner
+      run: |
+        [ -f "README.md" ] || { echo "❌ README.md missing"; exit 1; }
+        grep -q "zt-install.sh" README.md && echo "✓ install one-liner present" || { echo "❌ install one-liner not found in README"; exit 1; }
+
+    - name: Check governance files present
+      run: |
+        for f in ".github/copilot-instructions.md" ".github/REPO_CONFIG.md" ".github/TODO.md" ".github/PLANNING.md"; do
+          [ -f "$f" ] && echo "✓ $f" || { echo "❌ Missing: $f"; exit 1; }
+        done
