@@ -187,8 +187,13 @@ cat > "$DATA_DIR/iproute2/rt_tables" <<'EOF'
 EOF
 ok "rt_tables"
 
-# rules.v4
+# rules.v4 — with NOTRACK to bypass conntrack for ZeroTier UDP
 cat > "$DATA_DIR/iptables/rules.v4" <<EOF
+*raw
+-A PREROUTING -p udp --dport 9993 -j NOTRACK
+-A OUTPUT -p udp --sport 9993 -j NOTRACK
+COMMIT
+
 *nat
 -I POSTROUTING -o zt+ -j MASQUERADE
 -I POSTROUTING -o ${LAN1_IF} -j MASQUERADE
@@ -196,6 +201,10 @@ cat > "$DATA_DIR/iptables/rules.v4" <<EOF
 COMMIT
 EOF
 ok "rules.v4"
+
+# local.conf — copy tuning config (pins port, TCP fallback, interface blacklist)
+cp "$SCRIPT_DIR/config/local.conf" "$DATA_DIR/local.conf"
+ok "local.conf"
 
 # ─── Step 4: Build Docker image ───────────────────────────────────────────────
 step "Building Docker image: $IMAGE_NAME"
@@ -237,7 +246,20 @@ services:
       - /dev/net/tun
     cap_add:
       - NET_ADMIN
+      - NET_RAW
       - SYS_ADMIN
+    sysctls:
+      net.core.rmem_max: 26214400
+      net.core.wmem_max: 26214400
+      net.core.netdev_max_backlog: 5000
+      net.ipv4.udp_rmem_min: 8192
+      net.ipv4.udp_wmem_min: 8192
+    healthcheck:
+      test: ["CMD", "zerotier-cli", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     networks:
       macvlan-lan1:
         ipv4_address: ${LAN1_CONTAINER_IP}
@@ -249,6 +271,7 @@ services:
       - ${DATA_DIR}/zerotier-one:/var/lib/zerotier-one
       - ${DATA_DIR}/iptables:/etc/iptables
       - ${DATA_DIR}/iproute2/rt_tables:/etc/iproute2/rt_tables
+      - ${DATA_DIR}/local.conf:/var/lib/zerotier-one/local.conf:ro
     environment:
       - NETWORK_IDS=${ZT_NETWORK_ID}
       - GENERATE_MOON=true

@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ main, 'claude/**' ]
+    branches: [ main, alpha, beta, dev, 'claude/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, alpha, beta, dev ]
 
 jobs:
   validate:
@@ -17,17 +17,27 @@ jobs:
       run: |
         bash -n install.sh && echo "✓ install.sh syntax OK"
 
+    - name: Check update.sh bash syntax
+      run: |
+        bash -n update.sh && echo "✓ update.sh syntax OK"
+
     - name: Validate docker-compose.yml
       run: |
         docker compose config > /dev/null 2>&1 && echo "✓ docker-compose.yml is valid" || echo "⚠️ docker-compose.yml may have issues (docker not fully available in CI)"
 
-    - name: Validate README exists and contains install one-liner
+    - name: Validate README exists and contains install.sh reference
       run: |
         [ -f "README.md" ] || { echo "❌ README.md missing"; exit 1; }
-        grep -q "zt-install.sh" README.md && echo "✓ install one-liner present" || { echo "❌ install one-liner not found in README"; exit 1; }
+        grep -q "install.sh" README.md && echo "✓ install.sh reference present" || { echo "❌ install.sh not referenced in README"; exit 1; }
 
     - name: Check governance files present
       run: |
         for f in ".github/copilot-instructions.md" ".github/REPO_CONFIG.md" ".github/TODO.md" ".github/PLANNING.md"; do
+          [ -f "$f" ] && echo "✓ $f" || { echo "❌ Missing: $f"; exit 1; }
+        done
+
+    - name: Check required config files present
+      run: |
+        for f in "config/local.conf" "config/rules.v4" "config/setuproutes.sh" "config/rt_tables"; do
           [ -f "$f" ] && echo "✓ $f" || { echo "❌ Missing: $f"; exit 1; }
         done

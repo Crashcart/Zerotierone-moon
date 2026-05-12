@@ -1,7 +1,10 @@
-# Stability & Throughput Improvement Plan
+# Stability & Throughput Reference
 
-This document covers all planned changes to reduce cutouts and increase throughput
-on the DS918+ ZeroTier moon. Nothing here is implemented yet — approve to proceed.
+> **Status: ✅ All changes implemented** (commit `aa86507`, 2026-05-12)
+
+This document covers the diagnosed causes of cutouts and throughput bottlenecks on the
+DS918+ ZeroTier moon, and the changes made to address them. Use it to understand WHY
+each tuning parameter exists, and for diagnosing future issues.
 
 ---
 

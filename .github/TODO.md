@@ -2,7 +2,11 @@
 
 ## Review Items
 
-- [ ] **Implement ZeroTier on DS918+ (dual NIC)** — https://docs.zerotier.com/synology/
+- [x] **Implement ZeroTier on DS918+ (dual NIC)** — https://docs.zerotier.com/synology/
+  - Custom `zerotier-moon` image (Alpine 3.21, built locally via `Dockerfile`)
+  - Dual macvlan networks (macvlan-lan1 / macvlan-lan2) with policy routing
+  - Moon generation, identity persistence, and update tooling complete
+  - Stability improvements: NET_RAW, NOTRACK, conntrack timeout, healthcheck, 25 MB UDP buffers, fq qdisc, local.conf port pinning
 
 ---
 
