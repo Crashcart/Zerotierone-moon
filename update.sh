@@ -113,6 +113,13 @@ cp "$IDENTITY_PUBLIC" "$BACKUP_DIR/"
 [[ -f "$DATA_DIR/zerotier-one/moon.json" ]] && cp "$DATA_DIR/zerotier-one/moon.json" "$BACKUP_DIR/"
 ok "Identity backed up to $BACKUP_DIR"
 
+# Prune old backups — keep the 5 most recent to avoid unbounded disk growth
+BACKUP_COUNT=$(ls -d "$DATA_DIR/backups"/[0-9]* 2>/dev/null | wc -l)
+if [[ "$BACKUP_COUNT" -gt 5 ]]; then
+    ls -d "$DATA_DIR/backups"/[0-9]* 2>/dev/null | sort | head -n $(( BACKUP_COUNT - 5 )) | xargs rm -rf
+    ok "Pruned old backups (kept 5 most recent)"
+fi
+
 # ─── Rebuild image ────────────────────────────────────────────────────────────
 if $DO_BUILD; then
     step "Rebuilding Docker image: $IMAGE_NAME"
@@ -132,7 +139,7 @@ LAN1_IF="${LAN1_IF:-eth0}"
 LAN2_IF="${LAN2_IF:-eth1}"
 
 recreate_macvlan() {
-    local name=$1 parent=$2 subnet=$3 gateway=$4
+    local name=$1 parent=$2 subnet=$3 gateway=$4 container_ip=$5
     if docker network inspect "$name" &>/dev/null; then
         ok "Network $name exists"
     else
@@ -141,14 +148,15 @@ recreate_macvlan() {
             --driver macvlan \
             --subnet "$subnet" \
             --gateway "$gateway" \
+            --ip-range "${container_ip}/30" \
             -o parent="$parent" \
             "$name"
-        ok "Recreated $name (parent=$parent)"
+        ok "Recreated $name (parent=$parent, ip-range=${container_ip}/30)"
     fi
 }
 
-recreate_macvlan "macvlan-lan1" "$LAN1_IF" "$LAN1_SUBNET" "$LAN1_GATEWAY"
-recreate_macvlan "macvlan-lan2" "$LAN2_IF" "$LAN2_SUBNET" "$LAN2_GATEWAY"
+recreate_macvlan "macvlan-lan1" "$LAN1_IF" "$LAN1_SUBNET" "$LAN1_GATEWAY" "$LAN1_CONTAINER_IP"
+recreate_macvlan "macvlan-lan2" "$LAN2_IF" "$LAN2_SUBNET" "$LAN2_GATEWAY" "$LAN2_CONTAINER_IP"
 
 # ─── Restart container ────────────────────────────────────────────────────────
 step "Restarting container"
