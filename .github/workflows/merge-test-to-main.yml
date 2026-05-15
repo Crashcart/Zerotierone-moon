@@ -76,10 +76,30 @@ jobs:
             ? '✅ Auto-merge complete!'
             : '⏳ Waiting for approval and all checks to pass.';
           try {
-            await github.rest.issues.createComment({
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              body: message,
             });
-          } catch (e) { console.log('Could not post comment'); }
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && (
+                c.body.includes('Auto-merge complete') ||
+                c.body.includes('Waiting for approval')
+              )
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: message,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: message,
+              });
+            }
+          } catch (e) { console.log('Could not post/update comment'); }

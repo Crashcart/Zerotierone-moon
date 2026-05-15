@@ -25,10 +25,11 @@ P2_NET="172.16.0.0/24"
 TBL1="ISP_1"
 TBL2="ISP_2"
 
-# Flush existing policy rules for these tables before re-adding so that
-# repeated container restarts do not accumulate duplicate entries.
-ip rule del table $TBL1 2>/dev/null || true
-ip rule del table $TBL2 2>/dev/null || true
+# Flush ALL existing policy rules for these tables before re-adding.
+# 'ip rule del table X' removes only ONE matching rule per call, so we loop
+# until the command fails (meaning no more rules match) to clear all of them.
+while ip rule del table $TBL1 2>/dev/null; do true; done
+while ip rule del table $TBL2 2>/dev/null; do true; done
 
 # Subnet return-path rules: traffic sourced from each /24 exits the correct NIC.
 ip rule add from $P1_NET table $TBL1 priority 100 2>/dev/null || true

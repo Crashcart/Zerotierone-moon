@@ -71,6 +71,7 @@ fi
 
 # Validate required values
 [[ -n "${ZT_NETWORK_ID:-}"       ]] || die "ZT_NETWORK_ID is not set"
+[[ "${ZT_NETWORK_ID}" =~ ^[0-9a-fA-F]{16}$ ]] || die "ZT_NETWORK_ID must be exactly 16 hex characters (got: ${ZT_NETWORK_ID})"
 [[ -n "${LAN1_SUBNET:-}"         ]] || die "LAN1_SUBNET is not set"
 [[ -n "${LAN1_GATEWAY:-}"        ]] || die "LAN1_GATEWAY is not set"
 [[ -n "${LAN1_CONTAINER_IP:-}"   ]] || die "LAN1_CONTAINER_IP is not set"
@@ -169,9 +170,11 @@ P2_NET="${LAN2_SUBNET}"
 TBL1="ISP_1"
 TBL2="ISP_2"
 
-# Flush before re-adding — container restarts must not accumulate duplicate rules
-ip rule del table \$TBL1 2>/dev/null || true
-ip rule del table \$TBL2 2>/dev/null || true
+# Flush ALL existing rules for each table before re-adding.
+# 'ip rule del table X' removes only ONE matching rule per call, so loop
+# until no more rules match — prevents accumulation across container restarts.
+while ip rule del table \$TBL1 2>/dev/null; do true; done
+while ip rule del table \$TBL2 2>/dev/null; do true; done
 
 # Subnet return-path rules
 ip rule add from \$P1_NET table \$TBL1 priority 100 2>/dev/null || true
@@ -254,22 +257,26 @@ ok "Image built: $IMAGE_NAME"
 step "Creating macvlan Docker networks"
 
 create_macvlan() {
-    local name=$1 parent=$2 subnet=$3 gateway=$4
+    local name=$1 parent=$2 subnet=$3 gateway=$4 container_ip=$5
     if docker network inspect "$name" &>/dev/null; then
         warn "Network $name already exists — skipping"
     else
+        # Scope Docker's IP allocator to a /30 anchored at the container IP.
+        # This prevents Docker from handing out IPs to other containers that
+        # would conflict with real hosts on the LAN.
         docker network create \
             --driver macvlan \
             --subnet "$subnet" \
             --gateway "$gateway" \
+            --ip-range "${container_ip}/30" \
             -o parent="$parent" \
             "$name"
-        ok "Created $name (parent=$parent, $subnet)"
+        ok "Created $name (parent=$parent, $subnet, ip-range=${container_ip}/30)"
     fi
 }
 
-create_macvlan "macvlan-lan1" "$LAN1_IF" "$LAN1_SUBNET" "$LAN1_GATEWAY"
-create_macvlan "macvlan-lan2" "$LAN2_IF" "$LAN2_SUBNET" "$LAN2_GATEWAY"
+create_macvlan "macvlan-lan1" "$LAN1_IF" "$LAN1_SUBNET" "$LAN1_GATEWAY" "$LAN1_CONTAINER_IP"
+create_macvlan "macvlan-lan2" "$LAN2_IF" "$LAN2_SUBNET" "$LAN2_GATEWAY" "$LAN2_CONTAINER_IP"
 
 # ─── Step 6: Write final docker-compose.yml ───────────────────────────────────
 step "Writing docker-compose.yml"

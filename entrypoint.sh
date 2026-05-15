@@ -19,8 +19,13 @@ ZT_PID=$!
 log "Waiting for ZeroTier to be ready..."
 for i in $(seq 1 $ZT_TIMEOUT); do
     if zerotier-cli status &>/dev/null 2>&1; then
-        log "ZeroTier is ready (${i}s)"
+        ZT_VERSION=$(zerotier-one --version 2>/dev/null || echo "unknown")
+        log "ZeroTier $ZT_VERSION ready (${i}s)"
         break
+    fi
+    # Detect immediate process death rather than waiting the full timeout
+    if ! kill -0 "$ZT_PID" 2>/dev/null; then
+        die "ZeroTier process (PID $ZT_PID) exited unexpectedly on startup"
     fi
     if [[ $i -eq $ZT_TIMEOUT ]]; then
         die "ZeroTier did not start within ${ZT_TIMEOUT}s"
