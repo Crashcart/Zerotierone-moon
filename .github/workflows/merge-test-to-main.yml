@@ -1,8 +1,8 @@
-name: Auto-merge claude/**→main on approval
+name: Auto-merge claude/**→dev on approval
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, alpha, beta, dev ]
     types: [ opened, reopened, synchronize, review_requested ]
 
 jobs:

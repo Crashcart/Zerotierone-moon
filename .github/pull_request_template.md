@@ -1,4 +1,5 @@
 <!-- 🔒 GOVERNANCE FILE — Protected by Rule 10 in copilot-instructions.md. Follow full workflow when editing. -->
+<!-- ⚠️ BASE BRANCH: All PRs must target `alpha`, not `main`. See Rule 11 in copilot-instructions.md. -->
 ## Description
 <!-- Provide a detailed description of the changes in this pull request -->
 

@@ -2,9 +2,9 @@ name: Lint
 
 on:
   push:
-    branches: [ main, 'claude/**' ]
+    branches: [ main, alpha, beta, dev, 'claude/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, alpha, beta, dev ]
 
 jobs:
   lint:
@@ -19,13 +19,24 @@ jobs:
           python3 -c "import yaml, sys; yaml.safe_load(open('$f'))" && echo "✓ $f" || (echo "❌ $f" && exit 1)
         done
 
-    - name: ShellCheck install.sh
+    - name: ShellCheck all shell scripts
       run: |
+        SCRIPTS="install.sh update.sh entrypoint.sh config/setuproutes.sh"
         if command -v shellcheck &>/dev/null; then
-          shellcheck install.sh && echo "✓ install.sh shellcheck passed"
+          for f in $SCRIPTS; do
+            [ -f "$f" ] && shellcheck "$f" && echo "✓ $f shellcheck passed" || exit 1
+          done
         else
-          bash -n install.sh && echo "✓ install.sh syntax OK (shellcheck not available)"
+          for f in $SCRIPTS; do
+            [ -f "$f" ] && bash -n "$f" && echo "✓ $f syntax OK (shellcheck not available)"
+          done
         fi
+
+    - name: Validate config/local.conf JSON
+      run: |
+        jq . config/local.conf > /dev/null \
+          && echo "✓ config/local.conf valid JSON" \
+          || (echo "❌ config/local.conf invalid JSON" && exit 1)
 
     - name: Check for hardcoded secrets
       run: |
