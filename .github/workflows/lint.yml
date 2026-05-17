@@ -21,7 +21,7 @@ jobs:
 
     - name: ShellCheck all shell scripts
       run: |
-        SCRIPTS="install.sh update.sh entrypoint.sh config/setuproutes.sh"
+        SCRIPTS="install.sh update.sh entrypoint.sh zmoon config/setuproutes.sh tests/run.sh"
         if command -v shellcheck &>/dev/null; then
           for f in $SCRIPTS; do
             [ -f "$f" ] && shellcheck "$f" && echo "✓ $f shellcheck passed" || exit 1

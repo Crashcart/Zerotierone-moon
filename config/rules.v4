@@ -4,13 +4,25 @@
 #
 # NOTE: This file is a reference template. install.sh writes the production
 # copy to $DATA_DIR/iptables/rules.v4 with actual interface names substituted.
+#
+# iptables-restore is ATOMIC: a single invalid line aborts the entire restore
+# and NOTHING is applied. Every table here must load cleanly.
 
 # Bypass conntrack for ZeroTier UDP — prevents the default 30s conntrack
 # timeout expiring between ZeroTier keepalives (~25s), which causes brief
-# cutouts under jitter. NOTRACK flows skip NAT lookup entirely.
+# cutouts under jitter. NOTRACK flows skip the conntrack state machine.
 *raw
 -A PREROUTING -p udp --dport 9993 -j NOTRACK
 -A OUTPUT -p udp --sport 9993 -j NOTRACK
+COMMIT
+
+# Mark traffic forwarded FROM the ZeroTier overlay. POSTROUTING (nat) runs
+# after the routing decision and CANNOT match -i (input interface) — doing so
+# is an iptables error that aborts the whole restore. The mark set here on the
+# packet's skb persists into the nat POSTROUTING chain below, letting us scope
+# MASQUERADE to only ZeroTier-forwarded traffic.
+*mangle
+-A FORWARD -i zt+ -j MARK --set-mark 0x2a
 COMMIT
 
 # Allow forwarding between ZeroTier overlay and physical NICs.
@@ -25,14 +37,10 @@ COMMIT
 -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 COMMIT
 
-# MASQUERADE scoped to ZeroTier-forwarded traffic only.
-# Using -i zt+ in POSTROUTING restricts to packets that were forwarded
-# FROM the ZeroTier interface — not the container's own management traffic.
-# -A (append) used instead of -I (insert) since iptables-restore flushes
-# the table before loading, making insert vs append equivalent but -A is
-# clearer about intent.
+# MASQUERADE scoped to ZeroTier-forwarded traffic only, matched via the
+# 0x2a mark set in mangle/FORWARD above (POSTROUTING can't match -i).
+# The second rule NATs traffic egressing the ZT interface itself.
 *nat
--A POSTROUTING -i zt+ -o eth0 -j MASQUERADE
--A POSTROUTING -i zt+ -o eth1 -j MASQUERADE
+-A POSTROUTING -m mark --mark 0x2a -j MASQUERADE
 -A POSTROUTING -o zt+ -j MASQUERADE
 COMMIT

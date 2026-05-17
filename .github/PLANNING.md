@@ -9,6 +9,26 @@
 
 ## 🎯 Active Initiatives
 
+### Polished Product: `zmoon` CLI + Test Suite + Critical iptables Fix
+
+**Status**: ✅ Complete — merged to dev (2026-05-17)
+**Branch**: `claude/add-synology-zerotier-todo-B0Tup`
+
+**Approach**: Consolidate the deployment toolkit into a single polished `zmoon`
+CLI, add a dependency-free test suite + CI wiring, and fix bugs found by a full
+audit — most critically an illegal `-i` match in nat/POSTROUTING that aborted
+the entire iptables ruleset on every real DSM host.
+
+**Decisions Log**:
+- [2026-05-17] **CRITICAL**: `-A POSTROUTING -i zt+ ...` is invalid iptables (POSTROUTING runs post-routing and cannot match input interface). `iptables-restore` is atomic, so this one line silently aborted NOTRACK + FORWARD + MASQUERADE on every DSM host. Replaced with a mangle/FORWARD `MARK 0x2a` matched by `nat/POSTROUTING -m mark` — the documented, correct way to scope MASQUERADE to forwarded ZT traffic.
+- [2026-05-17] Added `zmoon` unified CLI (install/update/status/doctor/peers/moon-id/backup/restore/logs/version); install/update delegate to existing scripts to preserve the documented manual path.
+- [2026-05-17] `zmoon doctor` automates the STABILITY.md diagnostic checklist into PASS/WARN/FAIL with a non-zero exit code (cron/Task-Scheduler friendly).
+- [2026-05-17] Added `tests/run.sh` pure-bash suite (no bats); wired into `test.yml`; added `zmoon`+`tests/run.sh` to `lint.yml` ShellCheck.
+- [2026-05-17] Made every shell script 100% ShellCheck-clean at default severity (replaced `ls`-globs with bash nullglob arrays, split SC2155, restructured SC2015/SC2164) — CI lint was previously red on `update.sh` SC2012.
+- [2026-05-17] Fixed `ip rule del table` flush (deleted only one rule/call → loop), `.gitignore` missing `.env`, entrypoint process-death detection, unbounded backups, macvlan `--ip-range` scoping, ZT_NETWORK_ID validation.
+
+---
+
 ### Stability & Throughput Improvements + .github Audit
 
 **Status**: ✅ Complete — merged to dev (PR #11, 2026-05-12)

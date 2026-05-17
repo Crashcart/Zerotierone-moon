@@ -21,6 +21,14 @@ jobs:
       run: |
         bash -n update.sh && echo "✓ update.sh syntax OK"
 
+    - name: Check zmoon bash syntax
+      run: |
+        bash -n zmoon && echo "✓ zmoon syntax OK"
+
+    - name: Run test suite
+      run: |
+        bash tests/run.sh
+
     - name: Validate docker-compose.yml
       run: |
         docker compose config > /dev/null 2>&1 && echo "✓ docker-compose.yml is valid" || echo "⚠️ docker-compose.yml may have issues (docker not fully available in CI)"
@@ -41,3 +49,7 @@ jobs:
         for f in "config/local.conf" "config/rules.v4" "config/setuproutes.sh" "config/rt_tables"; do
           [ -f "$f" ] && echo "✓ $f" || { echo "❌ Missing: $f"; exit 1; }
         done
+
+    - name: Check zmoon CLI present and executable
+      run: |
+        [ -x "zmoon" ] && echo "✓ zmoon present and executable" || { echo "❌ zmoon missing or not executable"; exit 1; }
