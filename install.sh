@@ -211,13 +211,22 @@ cat > "$DATA_DIR/iproute2/rt_tables" <<'EOF'
 EOF
 ok "rt_tables"
 
-# rules.v4 — with NOTRACK to bypass conntrack for ZeroTier UDP
+# rules.v4 — with NOTRACK to bypass conntrack for ZeroTier UDP.
+# iptables-restore is ATOMIC: one bad line aborts the whole restore. In
+# particular -i (input iface) is ILLEGAL in nat/POSTROUTING — instead we
+# mark ZT-forwarded packets in mangle/FORWARD and match the mark in nat.
 cat > "$DATA_DIR/iptables/rules.v4" <<EOF
 # Bypass conntrack for ZeroTier UDP — prevents 30s timeout expiring between
 # ZeroTier keepalives (~25s), which causes brief cutouts under jitter.
 *raw
 -A PREROUTING -p udp --dport 9993 -j NOTRACK
 -A OUTPUT -p udp --sport 9993 -j NOTRACK
+COMMIT
+
+# Mark traffic forwarded FROM the ZeroTier overlay. The mark persists into
+# the nat POSTROUTING chain (which cannot match -i directly).
+*mangle
+-A FORWARD -i zt+ -j MARK --set-mark 0x2a
 COMMIT
 
 # Allow forwarding between ZeroTier overlay and physical NICs.
@@ -232,12 +241,10 @@ COMMIT
 -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 COMMIT
 
-# MASQUERADE scoped to ZeroTier-forwarded traffic only.
-# -i zt+ in POSTROUTING matches packets forwarded FROM the ZT interface.
-# This avoids masquerading the container's own management traffic.
+# MASQUERADE scoped to ZeroTier-forwarded traffic via the 0x2a mark set
+# above. The second rule NATs traffic egressing the ZT interface itself.
 *nat
--A POSTROUTING -i zt+ -o ${LAN1_IF} -j MASQUERADE
--A POSTROUTING -i zt+ -o ${LAN2_IF} -j MASQUERADE
+-A POSTROUTING -m mark --mark 0x2a -j MASQUERADE
 -A POSTROUTING -o zt+ -j MASQUERADE
 COMMIT
 EOF
