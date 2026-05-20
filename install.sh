@@ -227,6 +227,7 @@ COMMIT
 # the nat POSTROUTING chain (which cannot match -i directly).
 *mangle
 -A FORWARD -i zt+ -j MARK --set-mark 0x2a
+-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 COMMIT
 
 # Allow forwarding between ZeroTier overlay and physical NICs.
@@ -249,6 +250,21 @@ COMMIT
 COMMIT
 EOF
 ok "rules.v4"
+
+# rules.v6 — IPv6 FORWARD rules. ip6tables-restore applies these on every
+# container start. No *nat table — IPv6 uses global unicast addresses.
+# ICMPv6 MUST be permitted for NDP, PMTU discovery, and Router Advertisements.
+cat > "$DATA_DIR/iptables/rules.v6" <<EOF
+*filter
+-A FORWARD -i zt+ -o ${LAN1_IF} -j ACCEPT
+-A FORWARD -i zt+ -o ${LAN2_IF} -j ACCEPT
+-A FORWARD -i ${LAN1_IF} -o zt+ -j ACCEPT
+-A FORWARD -i ${LAN2_IF} -o zt+ -j ACCEPT
+-A FORWARD -p icmpv6 -j ACCEPT
+-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+COMMIT
+EOF
+ok "rules.v6"
 
 # local.conf — copy tuning config (pins port, TCP fallback, interface blacklist)
 cp "$SCRIPT_DIR/config/local.conf" "$DATA_DIR/local.conf"

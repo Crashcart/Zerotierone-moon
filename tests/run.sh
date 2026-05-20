@@ -76,19 +76,20 @@ else
     no "jq not available — cannot validate local.conf"
 fi
 
-assert_grep "rules.v4 has NOTRACK"          'NOTRACK'                  cat config/rules.v4
-assert_grep "rules.v4 has *raw table"       '^\*raw'                   cat config/rules.v4
-assert_grep "rules.v4 has *mangle mark"     'FORWARD -i zt\+ -j MARK'  cat config/rules.v4
-assert_grep "rules.v4 has FORWARD accept"   'FORWARD.*zt\+.*ACCEPT'    cat config/rules.v4
-assert_grep "MASQUERADE scoped by mark"     'POSTROUTING -m mark'      cat config/rules.v4
+assert_grep "rules.v4 has NOTRACK"           'NOTRACK'                        cat config/rules.v4
+assert_grep "rules.v4 has *raw table"        '^\*raw'                         cat config/rules.v4
+assert_grep "rules.v4 has *mangle mark"      'FORWARD -i zt\+ -j MARK'        cat config/rules.v4
+assert_grep "rules.v4 has MSS clamping"      'TCPMSS.*clamp-mss-to-pmtu'      cat config/rules.v4
+assert_grep "rules.v4 has FORWARD accept"    'FORWARD.*zt\+.*ACCEPT'          cat config/rules.v4
+assert_grep "MASQUERADE scoped by mark"      'POSTROUTING -m mark'            cat config/rules.v4
 # Regression: -i is ILLEGAL in nat/POSTROUTING and aborts the whole restore
 if grep -qE 'POSTROUTING -i ' config/rules.v4; then
     no "rules.v4 must NOT use -i in POSTROUTING (aborts iptables-restore)"
 else
     ok "rules.v4 has no illegal -i in POSTROUTING"
 fi
-assert_grep "rt_tables defines ISP_1"       'ISP_1'                    cat config/rt_tables
-assert_grep "rt_tables defines ISP_2"       'ISP_2'                    cat config/rt_tables
+assert_grep "rt_tables defines ISP_1"        'ISP_1'                          cat config/rt_tables
+assert_grep "rt_tables defines ISP_2"        'ISP_2'                          cat config/rt_tables
 
 # iptables-restore --test needs CAP_NET_ADMIN. Run it directly if we're root,
 # via passwordless sudo if available, otherwise skip (the static -i regression
@@ -105,6 +106,29 @@ if command -v iptables-restore >/dev/null 2>&1; then
     fi
 else
     echo -e "  ${DIM}skip${NC} iptables-restore not available"
+fi
+
+assert_grep "rules.v6 has FORWARD accept"    'FORWARD.*zt\+.*ACCEPT'          cat config/rules.v6
+assert_grep "rules.v6 allows ICMPv6"         'FORWARD -p icmpv6'              cat config/rules.v6
+# IPv6 must NOT have a *nat table — NAT is not used with IPv6 global addresses
+if grep -q '^\*nat' config/rules.v6 2>/dev/null; then
+    no "rules.v6 must NOT have a *nat table"
+else
+    ok "rules.v6 has no *nat table (correct for IPv6)"
+fi
+
+if command -v ip6tables-restore >/dev/null 2>&1; then
+    if [[ "$(id -u)" -eq 0 ]]; then
+        assert_ok "rules.v6 passes ip6tables-restore --test" \
+            sh -c 'ip6tables-restore --test < config/rules.v6'
+    elif sudo -n true 2>/dev/null; then
+        assert_ok "rules.v6 passes ip6tables-restore --test (sudo)" \
+            sh -c 'sudo ip6tables-restore --test < config/rules.v6'
+    else
+        echo -e "  ${DIM}skip${NC} ip6tables-restore needs privileges (not root, no sudo)"
+    fi
+else
+    echo -e "  ${DIM}skip${NC} ip6tables-restore not available"
 fi
 
 # ─── 4. setuproutes.sh correctness ───────────────────────────────────────────
@@ -133,6 +157,12 @@ assert_grep "install.sh scopes macvlan with --ip-range" \
     '\-\-ip-range' cat install.sh
 assert_grep "install.sh generates mark-based MASQUERADE" \
     'POSTROUTING -m mark' cat install.sh
+assert_grep "install.sh generates MSS clamping rule" \
+    'TCPMSS.*clamp-mss-to-pmtu' cat install.sh
+assert_grep "install.sh generates rules.v6" \
+    'rules\.v6' cat install.sh
+assert_grep "entrypoint applies ip6tables rules" \
+    'ip6tables-restore' cat entrypoint.sh
 assert_grep "update.sh prunes old backups" \
     'Pruned old backups' cat update.sh
 assert_grep "entrypoint detects ZeroTier process death" \

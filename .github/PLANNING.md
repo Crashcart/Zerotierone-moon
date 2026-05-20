@@ -2,12 +2,29 @@
 
 > 🔒 **GOVERNANCE FILE** — Protected by Rule 10 in `copilot-instructions.md`. Follow full workflow when editing.
 
-**Last Updated**: 2026-05-12
+**Last Updated**: 2026-05-20
 **Document Purpose**: Centralized planning for multi-agent coordination, architectural decisions, and project context
 
 ---
 
 ## 🎯 Active Initiatives
+
+### IPv6 ip6tables + TCP MSS Clamping
+
+**Status**: ✅ Complete — merged to dev (2026-05-20)
+**Branch**: `claude/add-synology-zerotier-todo-B0Tup`
+
+**Approach**: Two networking gaps remain after the polished-product merge:
+1. `ip6tables` is installed in the Docker image but never applied — no `rules.v6` exists and `entrypoint.sh` never calls `ip6tables-restore`. IPv6 FORWARD chain is unmanaged.
+2. TCP MSS clamping is absent from the mangle table. When the ZeroTier overlay MTU is smaller than the physical NIC MTU, TCP sessions forwarded through the gateway can silently stall (path-MTU black hole).
+
+**Decisions Log**:
+- [2026-05-20] Phase 0 complete: re-imported `copilot-instructions.md` per new goal; re-read all governance files
+- [2026-05-20] MSS clamping: add `-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu` to `*mangle` in both `config/rules.v4` template and `install.sh` generated copy
+- [2026-05-20] IPv6: create `config/rules.v6` template (FORWARD + ICMPv6, no NAT); `install.sh` generates data-dir copy with real interface names; `entrypoint.sh` applies via `ip6tables-restore`
+- [2026-05-20] Note: session push-and-merge-to-dev workflow is user-authorized (overrides copilot-instructions.md Rule #3 for this repo)
+
+---
 
 ### Polished Product: `zmoon` CLI + Test Suite + Critical iptables Fix
 

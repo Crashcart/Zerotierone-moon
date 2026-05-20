@@ -52,6 +52,11 @@ if [[ -f /etc/iptables/rules.v4 ]]; then
     iptables-restore < /etc/iptables/rules.v4 || log "WARNING: iptables-restore failed (may need NET_ADMIN/NET_RAW cap)"
 fi
 
+if [[ -f /etc/iptables/rules.v6 ]]; then
+    log "Applying ip6tables rules (FORWARD + ICMPv6)..."
+    ip6tables-restore < /etc/iptables/rules.v6 || log "WARNING: ip6tables-restore failed (may need NET_ADMIN/NET_RAW cap)"
+fi
+
 # ─── Apply dual-NIC routing ────────────────────────────────────────────────────
 if [[ -f "$ZT_HOME/setuproutes.sh" ]]; then
     log "Applying dual-NIC routing rules..."
