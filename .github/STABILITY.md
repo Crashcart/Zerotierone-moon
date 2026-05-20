@@ -296,3 +296,47 @@ A full network engineering review identified the following issues, all fixed in 
 | B | **No eth1 failover** — if eth1 goes down, ISP_2 table still routes via dead gateway; ZeroTier path reconverges in ~125s | For resilience, add a link-monitor script that flushes the ISP_2 table when eth1 loses carrier |
 | C | **`ports:` under macvlan is a no-op** — upstream router must be manually configured to forward UDP 9993 to the container's macvlan IP | Document in README; `portMappingEnabled: true` in `local.conf` handles UPnP if the router supports it |
 | D | **SYS_ADMIN capability is broad** — only required if the sysctl writes in entrypoint.sh need host-ns access; could be dropped now that conntrack tuning moved to host | Consider dropping SYS_ADMIN in a future hardening pass |
+
+---
+
+## Critical Regression Found & Fixed (2026-05-17)
+
+> **Severity: CRITICAL — all prior iptables stability work was inert on real hosts.**
+
+Finding #7 from the 2026-05-12 review ("scope MASQUERADE with `-i zt+` in
+POSTROUTING") was implemented with **invalid iptables syntax**:
+
+```
+iptables-restore v1.8.10 (nf_tables): Can't use -i with POSTROUTING
+```
+
+`POSTROUTING` runs *after* the routing decision, so the input interface is no
+longer available — `-i` there is an error, not just ignored. Because
+`iptables-restore` is **atomic** (any single bad line aborts the entire
+restore and applies *nothing*), this meant that on every real DSM host:
+
+- ❌ `*raw` NOTRACK never applied → conntrack 30s timeout cutouts persisted
+- ❌ `*filter` FORWARD ACCEPT never applied → macvlan relay traffic at risk
+- ❌ `*nat` MASQUERADE never applied → gateway/relay NAT broken
+
+`entrypoint.sh` only logged a soft `WARNING: iptables-restore failed`, so it
+went unnoticed. The diagnostics were manual, so no one ran `iptables -t raw -L`.
+
+**Fix**: mark ZeroTier-forwarded packets in `*mangle`/FORWARD and match the
+mark in `*nat`/POSTROUTING (the standard, correct way to scope MASQUERADE
+when the input interface isn't available):
+
+```
+*mangle
+-A FORWARD -i zt+ -j MARK --set-mark 0x2a
+COMMIT
+*nat
+-A POSTROUTING -m mark --mark 0x2a -j MASQUERADE
+-A POSTROUTING -o zt+ -j MASQUERADE
+COMMIT
+```
+
+**Prevention**: `tests/run.sh` now runs `iptables-restore --test` on the
+ruleset *and* a static regression check that fails if `-i ` ever reappears in
+a POSTROUTING line. `build.yml` already runs the same `--test`. `zmoon doctor`
+checks NOTRACK/FORWARD rules are actually live at runtime.

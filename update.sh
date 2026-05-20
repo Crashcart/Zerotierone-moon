@@ -29,6 +29,29 @@ ok()   { echo -e "  ${G}✓${NC} $*"; }
 warn() { echo -e "  ${Y}!${NC} $*"; }
 die()  { echo -e "  ${R}✗${NC} $*" >&2; exit 1; }
 
+# Print the Moon ID (filename without .moon) of the first moon file, if any.
+# Uses a bash glob (not ls) so filenames with odd characters are safe.
+moon_id_of() {
+    local dir="$1" f
+    shopt -s nullglob
+    for f in "$dir"/*.moon; do
+        basename "$f" .moon
+        shopt -u nullglob
+        return 0
+    done
+    shopt -u nullglob
+    return 1
+}
+
+# Count .moon files in a directory via a glob.
+moon_count_of() {
+    local dir="$1" files
+    shopt -s nullglob
+    files=("$dir"/*.moon)
+    shopt -u nullglob
+    echo "${#files[@]}"
+}
+
 [[ $EUID -eq 0 ]] || die "Run as root: sudo -i, then bash update.sh"
 command -v docker &>/dev/null || die "Docker not found."
 
@@ -66,7 +89,7 @@ if $STATUS_ONLY; then
     echo -e "\n${B}ZeroTier Moon Status${NC}"
     echo "  Container : $(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo 'not found')"
     echo "  ZT Status : $(docker exec "$CONTAINER_NAME" zerotier-cli status 2>/dev/null || echo 'unreachable')"
-    echo "  Moon ID   : $(ls "$DATA_DIR/zerotier-one/moons.d/" 2>/dev/null | sed 's/\.moon//' || echo 'none')"
+    echo "  Moon ID   : $(moon_id_of "$DATA_DIR/zerotier-one/moons.d" || echo 'none')"
     echo "  Peers     :"
     docker exec "$CONTAINER_NAME" zerotier-cli listpeers 2>/dev/null || echo "    (unavailable)"
     exit 0
@@ -95,11 +118,11 @@ MOONS_DIR="$DATA_DIR/zerotier-one/moons.d"
 [[ -f "$IDENTITY_SECRET" ]] || die "identity.secret missing at $IDENTITY_SECRET — moon identity lost. Re-run install.sh to start fresh."
 [[ -f "$IDENTITY_PUBLIC" ]] || die "identity.public missing at $IDENTITY_PUBLIC"
 
-MOON_FILES=$(ls "$MOONS_DIR"/*.moon 2>/dev/null | wc -l)
+MOON_FILES=$(moon_count_of "$MOONS_DIR")
 if [[ "$MOON_FILES" -eq 0 ]]; then
     warn "No .moon files found in $MOONS_DIR — moon will be recompiled on next start (identity preserved)"
 else
-    MOON_ID=$(ls "$MOONS_DIR"/*.moon 2>/dev/null | head -1 | xargs basename | sed 's/\.moon//')
+    MOON_ID=$(moon_id_of "$MOONS_DIR")
     ok "Moon identity intact — ID: $MOON_ID"
 fi
 
@@ -113,10 +136,17 @@ cp "$IDENTITY_PUBLIC" "$BACKUP_DIR/"
 [[ -f "$DATA_DIR/zerotier-one/moon.json" ]] && cp "$DATA_DIR/zerotier-one/moon.json" "$BACKUP_DIR/"
 ok "Identity backed up to $BACKUP_DIR"
 
-# Prune old backups — keep the 5 most recent to avoid unbounded disk growth
-BACKUP_COUNT=$(ls -d "$DATA_DIR/backups"/[0-9]* 2>/dev/null | wc -l)
-if [[ "$BACKUP_COUNT" -gt 5 ]]; then
-    ls -d "$DATA_DIR/backups"/[0-9]* 2>/dev/null | sort | head -n $(( BACKUP_COUNT - 5 )) | xargs rm -rf
+# Prune old backups — keep the 5 most recent to avoid unbounded disk growth.
+# bash expands globs in lexical order, and backup names are timestamped
+# (YYYYMMDD-HHMMSS), so the array is already oldest→newest. No mapfile/sort
+# (kept bash 3 compatible — update.sh runs on the DSM host).
+shopt -s nullglob
+BACKUPS=("$DATA_DIR"/backups/[0-9]*/)
+shopt -u nullglob
+if [[ "${#BACKUPS[@]}" -gt 5 ]]; then
+    for ((i = 0; i < ${#BACKUPS[@]} - 5; i++)); do
+        rm -rf "${BACKUPS[$i]}"
+    done
     ok "Pruned old backups (kept 5 most recent)"
 fi
 
@@ -178,7 +208,7 @@ done
 
 # ─── Report ───────────────────────────────────────────────────────────────────
 ZT_STATUS=$(docker exec "$CONTAINER_NAME" zerotier-cli status 2>/dev/null || echo "not ready")
-MOON_ID=$(ls "$MOONS_DIR"/*.moon 2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/\.moon//' || echo "pending")
+MOON_ID=$(moon_id_of "$MOONS_DIR" || echo "pending")
 
 echo
 echo -e "${G}────────────────────────────────────────────────────────────${NC}"

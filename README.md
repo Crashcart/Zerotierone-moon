@@ -9,6 +9,46 @@ Configured for dual-NIC operation so the moon is reachable from both physical ne
 
 ---
 
+## Quick Start
+
+Everything is driven by a single CLI: **`zmoon`**.
+
+```sh
+# 1. SSH into the NAS as root
+ssh admin@<NAS_IP> && sudo -i
+cd /path/to/this/repo
+
+# 2. Configure (copy the example and edit your subnets/IPs)
+cp .env.example .env && vi .env
+
+# 3. Install — builds the image, creates macvlan nets, generates the moon
+./zmoon install
+
+# 4. Verify everything is healthy
+./zmoon doctor
+
+# 5. Get the Moon ID + the command to run on every client
+./zmoon moon-id
+```
+
+| Command | What it does |
+|---------|--------------|
+| `zmoon install` | First-time setup (image, networks, moon, container) |
+| `zmoon update [--branch X] [--no-build]` | Rebuild + restart without touching the moon identity |
+| `zmoon status` | One-screen health summary (container, ZT, moon, peers) |
+| `zmoon doctor` | Full automated diagnostics — PASS/WARN/FAIL, non-zero exit on failure (cron-friendly) |
+| `zmoon peers` | Parsed peer table: address, role, latency, direct vs relayed |
+| `zmoon moon-id` | Print the Moon ID and the client `orbit` command |
+| `zmoon backup` | Back up the moon identity (auto-prunes to last 5) |
+| `zmoon restore <dir>` | Restore the moon identity from a backup |
+| `zmoon logs [-f]` | Show / follow container logs |
+| `zmoon version` | zmoon + running ZeroTier version |
+
+`zmoon install` / `zmoon update` simply delegate to `install.sh` / `update.sh`, so the
+detailed manual walkthrough below is still accurate if you prefer the Container Manager UI.
+
+---
+
 ## Hardware
 
 | Item | Detail |
@@ -283,12 +323,33 @@ ip rule add from $P2_NET table $TBL2
 ### `config/rules.v4`
 
 ```
+*raw
+-A PREROUTING -p udp --dport 9993 -j NOTRACK
+-A OUTPUT -p udp --sport 9993 -j NOTRACK
+COMMIT
+
+*mangle
+-A FORWARD -i zt+ -j MARK --set-mark 0x2a
+COMMIT
+
+*filter
+-A FORWARD -i zt+ -o eth0 -j ACCEPT
+-A FORWARD -i zt+ -o eth1 -j ACCEPT
+-A FORWARD -i eth0 -o zt+ -j ACCEPT
+-A FORWARD -i eth1 -o zt+ -j ACCEPT
+-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+COMMIT
+
 *nat
--I POSTROUTING -o zt+ -j MASQUERADE
--I POSTROUTING -o eth0 -j MASQUERADE
--I POSTROUTING -o eth1 -j MASQUERADE
+-A POSTROUTING -m mark --mark 0x2a -j MASQUERADE
+-A POSTROUTING -o zt+ -j MASQUERADE
 COMMIT
 ```
+
+> **Why the `0x2a` mark?** `iptables` forbids `-i` (input interface) in
+> `POSTROUTING`, and `iptables-restore` is atomic — a single bad line drops the
+> *entire* ruleset. ZeroTier-forwarded packets are marked in `mangle`/FORWARD
+> and the mark is matched in `nat`/POSTROUTING to scope MASQUERADE correctly.
 
 ---
 
@@ -357,7 +418,7 @@ The following are applied automatically by `install.sh` and `entrypoint.sh`:
 | `NET_RAW` capability | `docker-compose.yml` | Enables iptables raw table (required for NOTRACK) |
 | NOTRACK for UDP 9993 | `config/rules.v4` | Removes ZeroTier from conntrack — prevents 30s timeout cutouts |
 | `*filter` FORWARD rules | `config/rules.v4` | Allows ZT↔LAN forwarding (macvlan has no automatic ACCEPT rules) |
-| Scoped MASQUERADE | `config/rules.v4` | Only NATs ZeroTier-forwarded traffic, not container management traffic |
+| Mark-scoped MASQUERADE | `config/rules.v4` | `mangle` marks ZT-forwarded packets; `nat` matches the mark — only NATs ZeroTier-forwarded traffic (POSTROUTING can't match `-i`) |
 | conntrack UDP timeout → 300s | host `sysctl.conf` via `install.sh` | Belt-and-suspenders; must be set on the DSM host (not inside container) |
 | 8 MB UDP socket buffers | compose `sysctls` + host `sysctl.conf` | ~2× BDP for ZT on J3455; 25 MB was oversized and caused cache pressure |
 | Docker healthcheck | `docker-compose.yml` | Auto-restarts container if daemon hangs |
@@ -372,7 +433,26 @@ The following are applied automatically by `install.sh` and `entrypoint.sh`:
 
 > **macvlan + port forwarding:** The `ports:` directive in `docker-compose.yml` has **no effect** under macvlan networking — Docker does not create DNAT rules for macvlan containers. Configure your router to forward **UDP 9993** directly to the container's macvlan IP (e.g. `192.168.1.253`). `portMappingEnabled: true` in `local.conf` will attempt UPnP/NAT-PMP automatically if your router supports it.
 
-See `.github/STABILITY.md` for full diagnostic commands.
+`zmoon doctor` automates the full diagnostic checklist (NET_RAW, NOTRACK, socket
+buffers, fq qdisc, policy-routing rule count, conntrack timeout, relayed peers)
+and exits non-zero if anything fails — wire it into DSM Task Scheduler for
+unattended monitoring. See `.github/STABILITY.md` for the underlying rationale.
+
+---
+
+## Testing
+
+A dependency-free test suite validates shell syntax, ShellCheck cleanliness,
+config-file correctness (including a regression guard for the illegal `-i` in
+`POSTROUTING` that silently broke the whole iptables ruleset), and the `zmoon`
+CLI's offline behaviour:
+
+```sh
+bash tests/run.sh
+```
+
+It runs in CI on every push/PR (`.github/workflows/test.yml`). ShellCheck runs
+against every shell script via `.github/workflows/lint.yml`.
 
 ---
 

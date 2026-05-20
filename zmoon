@@ -1,0 +1,381 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────────────────────────
+# zmoon — ZeroTier Moon control CLI for Synology DS918+
+#
+# A single entry point for installing, updating, monitoring, and diagnosing
+# the dual-NIC ZeroTier moon node.
+#
+#   zmoon install                 First-time setup (delegates to install.sh)
+#   zmoon update [opts]           Rebuild + restart    (delegates to update.sh)
+#   zmoon status                  Concise health summary
+#   zmoon doctor                  Full automated diagnostics (PASS/WARN/FAIL)
+#   zmoon peers                   Parsed peer list (role, latency, path)
+#   zmoon moon-id                 Print Moon ID + client orbit command
+#   zmoon backup                  Back up moon identity (keeps last 5)
+#   zmoon restore <dir>           Restore moon identity from a backup
+#   zmoon logs [-f]               Show container logs
+#   zmoon version                 Print zmoon + ZeroTier versions
+#   zmoon help                    Show this help
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+ZMOON_VERSION="1.0.0"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env"
+
+# ─── Colours / output helpers ────────────────────────────────────────────────
+if [[ -t 1 ]]; then
+    R='\033[0;31m' G='\033[0;32m' Y='\033[1;33m' B='\033[0;34m'
+    DIM='\033[2m' BOLD='\033[1m' NC='\033[0m'
+else
+    R='' G='' Y='' B='' DIM='' BOLD='' NC=''
+fi
+say()  { echo -e "$*"; }
+hdr()  { echo -e "\n${B}${BOLD}$*${NC}"; }
+ok()   { echo -e "  ${G}✓${NC} $*"; }
+warn() { echo -e "  ${Y}!${NC} $*"; }
+err()  { echo -e "  ${R}✗${NC} $*" >&2; }
+die()  { echo -e "${R}✗${NC} $*" >&2; exit 1; }
+
+# ─── Lazy config load ────────────────────────────────────────────────────────
+# Only commands that touch the deployment need .env / docker. help/version
+# must work in any checkout (and in CI) with neither present.
+CONTAINER_NAME="zerotier-moon"
+DATA_DIR="/volume1/docker/zerotier"
+
+load_env() {
+    [[ -f "$ENV_FILE" ]] || die ".env not found — run 'zmoon install' first"
+    # shellcheck source=/dev/null
+    source "$ENV_FILE"
+    CONTAINER_NAME="${CONTAINER_NAME:-zerotier-moon}"
+    DATA_DIR="${DATA_DIR:-/volume1/docker/zerotier}"
+}
+
+need_docker() {
+    command -v docker >/dev/null 2>&1 || die "docker not found (install Container Manager)"
+}
+
+container_running() {
+    [[ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || echo false)" == "true" ]]
+}
+
+zt() { docker exec "$CONTAINER_NAME" zerotier-cli "$@" 2>/dev/null; }
+
+# Print the Moon ID (basename without .moon) of the first moon file found.
+# Uses a bash glob rather than `ls` so odd filenames are handled safely.
+first_moon_id() {
+    local f
+    shopt -s nullglob
+    for f in "$DATA_DIR"/zerotier-one/moons.d/*.moon; do
+        basename "$f" .moon
+        shopt -u nullglob
+        return 0
+    done
+    shopt -u nullglob
+    return 1
+}
+
+# ─── help / version ──────────────────────────────────────────────────────────
+cmd_help() {
+    sed -n '3,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+cmd_version() {
+    say "${BOLD}zmoon${NC} v${ZMOON_VERSION}"
+    if command -v docker >/dev/null 2>&1 && container_running; then
+        local ztv
+        ztv="$(docker exec "$CONTAINER_NAME" zerotier-one --version 2>/dev/null || echo 'unknown')"
+        say "ZeroTier: ${ztv}"
+    fi
+}
+
+# ─── install / update (delegate) ─────────────────────────────────────────────
+cmd_install() { exec bash "$SCRIPT_DIR/install.sh" "$@"; }
+cmd_update()  { exec bash "$SCRIPT_DIR/update.sh"  "$@"; }
+
+# ─── status ──────────────────────────────────────────────────────────────────
+cmd_status() {
+    load_env; need_docker
+    hdr "ZeroTier Moon — Status"
+
+    local cstate
+    cstate="$(docker inspect -f '{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo 'not found')"
+    if container_running; then
+        ok "Container : ${G}${cstate}${NC}"
+    else
+        warn "Container : ${Y}${cstate}${NC}"
+    fi
+
+    local health
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER_NAME" 2>/dev/null || echo 'unknown')"
+    say "  Health    : ${health}"
+
+    local ztstatus
+    ztstatus="$(zt status || echo 'unreachable')"
+    say "  ZeroTier  : ${ztstatus}"
+
+    local moon_id
+    moon_id="$(first_moon_id || true)"
+    say "  Moon ID   : ${moon_id:-none}"
+
+    local peer_count
+    peer_count="$(zt -j listpeers 2>/dev/null | grep -c '"address"' || echo 0)"
+    say "  Peers     : ${peer_count}"
+}
+
+# ─── peers (parsed) ──────────────────────────────────────────────────────────
+cmd_peers() {
+    load_env; need_docker
+    container_running || die "container not running"
+    hdr "ZeroTier Peers"
+    printf "  ${DIM}%-12s %-8s %-9s %-7s %s${NC}\n" "ADDRESS" "ROLE" "LATENCY" "VER" "PATH"
+
+    local json
+    json="$(zt -j listpeers || echo '[]')"
+    if command -v jq >/dev/null 2>&1; then
+        echo "$json" | jq -r '.[] |
+            [ .address,
+              .role,
+              (if .latency >= 0 then (.latency|tostring)+"ms" else "n/a" end),
+              (.version // "-"),
+              (if (.paths | map(select(.active)) | length) > 0
+                 then (.paths[] | select(.active) | .address) else "RELAYED" end)
+            ] | @tsv' 2>/dev/null \
+        | while IFS=$'\t' read -r addr role lat ver path; do
+            printf "  %-12s %-8s %-9s %-7s %s\n" "$addr" "$role" "$lat" "$ver" "$path"
+          done
+    else
+        # jq missing — run it inside the container, which always has jq
+        docker exec "$CONTAINER_NAME" sh -c \
+          'zerotier-cli -j listpeers | jq -r ".[] | [.address,.role,((.latency|tostring)+\"ms\"),(.version//\"-\")] | @tsv"' \
+          2>/dev/null \
+        | while IFS=$'\t' read -r addr role lat ver; do
+            printf "  %-12s %-8s %-9s %-7s\n" "$addr" "$role" "$lat" "$ver"
+          done
+    fi
+}
+
+# ─── moon-id ─────────────────────────────────────────────────────────────────
+cmd_moon_id() {
+    load_env
+    local moon_id
+    moon_id="$(first_moon_id || true)"
+    [[ -n "$moon_id" ]] || die "no .moon file found — moon not yet generated"
+    say "${BOLD}Moon ID:${NC} ${moon_id}"
+    say ""
+    say "On every client that should use this moon, run:"
+    say "  ${G}zerotier-cli orbit ${moon_id} ${moon_id}${NC}"
+}
+
+# ─── backup / restore ────────────────────────────────────────────────────────
+cmd_backup() {
+    load_env
+    local zt_home="$DATA_DIR/zerotier-one"
+    [[ -f "$zt_home/identity.secret" ]] || die "identity.secret missing — nothing to back up"
+
+    local dest
+    dest="$DATA_DIR/backups/$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$dest"
+    cp "$zt_home/identity.secret" "$zt_home/identity.public" "$dest/"
+    [[ -f "$zt_home/moon.json" ]] && cp "$zt_home/moon.json" "$dest/"
+    ok "Backed up moon identity to $dest"
+
+    local count
+    count="$(find "$DATA_DIR/backups" -maxdepth 1 -name '[0-9]*' -type d 2>/dev/null | wc -l)"
+    if [[ "$count" -gt 5 ]]; then
+        find "$DATA_DIR/backups" -maxdepth 1 -name '[0-9]*' -type d 2>/dev/null \
+            | sort | head -n $(( count - 5 )) | xargs -r rm -rf
+        ok "Pruned old backups (kept 5 most recent)"
+    fi
+}
+
+cmd_restore() {
+    load_env; need_docker
+    local src="${1:-}"
+    [[ -n "$src" ]] || die "usage: zmoon restore <backup-dir>"
+    [[ -d "$src" ]] || die "backup dir not found: $src"
+    [[ -f "$src/identity.secret" ]] || die "no identity.secret in $src"
+
+    local zt_home="$DATA_DIR/zerotier-one"
+    warn "This overwrites the live moon identity. The moon's address WILL change"
+    warn "unless this backup matches the current identity."
+    printf "  Type 'restore' to continue: "
+    local confirm; read -r confirm
+    [[ "$confirm" == "restore" ]] || die "aborted"
+
+    if container_running; then
+        docker stop "$CONTAINER_NAME" >/dev/null
+        ok "Stopped container"
+    fi
+    cp "$src/identity.secret" "$src/identity.public" "$zt_home/"
+    [[ -f "$src/moon.json" ]] && cp "$src/moon.json" "$zt_home/"
+    ok "Restored identity from $src"
+    docker start "$CONTAINER_NAME" >/dev/null
+    ok "Restarted container — verify with 'zmoon status'"
+}
+
+# ─── logs ────────────────────────────────────────────────────────────────────
+cmd_logs() {
+    load_env; need_docker
+    if [[ "${1:-}" == "-f" || "${1:-}" == "--follow" ]]; then
+        exec docker logs -f --tail 100 "$CONTAINER_NAME"
+    fi
+    docker logs --tail 100 "$CONTAINER_NAME"
+}
+
+# ─── doctor ──────────────────────────────────────────────────────────────────
+# Automated health checks distilled from .github/STABILITY.md. Each check
+# prints PASS/WARN/FAIL; the command exits non-zero if any FAIL occurred so
+# it can be wired into monitoring / cron.
+DR_FAIL=0
+DR_WARN=0
+chk_pass() { echo -e "  ${G}PASS${NC}  $*"; }
+chk_warn() { echo -e "  ${Y}WARN${NC}  $*"; DR_WARN=$(( DR_WARN + 1 )); }
+chk_fail() { echo -e "  ${R}FAIL${NC}  $*"; DR_FAIL=$(( DR_FAIL + 1 )); }
+
+cmd_doctor() {
+    load_env; need_docker
+    hdr "ZeroTier Moon — Diagnostics"
+
+    # 1. Container running
+    if container_running; then
+        chk_pass "Container is running"
+    else
+        chk_fail "Container is not running (start: zmoon update --no-build)"
+        say "\n${R}Container down — remaining checks skipped.${NC}"
+        exit 1
+    fi
+
+    # 2. Healthcheck status
+    local health
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER_NAME" 2>/dev/null)"
+    case "$health" in
+        healthy)   chk_pass "Docker healthcheck: healthy" ;;
+        none)      chk_warn "No Docker healthcheck configured" ;;
+        starting)  chk_warn "Healthcheck still starting" ;;
+        *)         chk_fail "Docker healthcheck: $health" ;;
+    esac
+
+    # 3. ZeroTier daemon responsive
+    if zt status | grep -q ONLINE; then
+        chk_pass "ZeroTier daemon ONLINE"
+    else
+        chk_fail "ZeroTier daemon not ONLINE"
+    fi
+
+    # 4. NET_RAW capability (required for NOTRACK)
+    if docker exec "$CONTAINER_NAME" grep -q CapEff /proc/1/status 2>/dev/null; then
+        chk_pass "Capability set present (CapEff readable)"
+    else
+        chk_warn "Could not read process capabilities"
+    fi
+
+    # 5. NOTRACK applied for UDP 9993
+    if docker exec "$CONTAINER_NAME" iptables -t raw -S 2>/dev/null | grep -q 'NOTRACK'; then
+        chk_pass "NOTRACK rule active for ZeroTier UDP"
+    else
+        chk_fail "NOTRACK missing — conntrack 30s timeout may cut connections"
+    fi
+
+    # 6. FORWARD ACCEPT rules for zt+ <-> NIC (macvlan injects none)
+    if docker exec "$CONTAINER_NAME" iptables -S FORWARD 2>/dev/null | grep -q 'zt+'; then
+        chk_pass "FORWARD rules present for ZeroTier overlay"
+    else
+        chk_warn "No zt+ FORWARD rules — relay/gateway traffic may be dropped"
+    fi
+
+    # 7. Socket buffers tuned
+    local rmem
+    rmem="$(docker exec "$CONTAINER_NAME" sysctl -n net.core.rmem_max 2>/dev/null || echo 0)"
+    if [[ "$rmem" -ge 8388608 ]]; then
+        chk_pass "UDP socket buffers tuned (rmem_max=${rmem})"
+    else
+        chk_warn "rmem_max=${rmem} (expected >= 8388608)"
+    fi
+
+    # 8. fq qdisc on the ZT interface
+    local zt_if
+    zt_if="$(docker exec "$CONTAINER_NAME" sh -c "ip -o link show | awk -F': ' '/ zt/{print \$2; exit}'" 2>/dev/null | tr -d ' ')"
+    if [[ -n "$zt_if" ]]; then
+        if docker exec "$CONTAINER_NAME" tc qdisc show dev "$zt_if" 2>/dev/null | grep -q 'qdisc fq '; then
+            chk_pass "fq qdisc active on $zt_if"
+        else
+            chk_warn "fq qdisc not set on $zt_if (bufferbloat under load)"
+        fi
+    else
+        chk_warn "No ZeroTier interface yet (not joined a network?)"
+    fi
+
+    # 9. Policy routing rules present and not duplicated
+    local rule_count
+    rule_count="$(docker exec "$CONTAINER_NAME" ip rule show 2>/dev/null | grep -cE 'lookup (ISP_1|ISP_2)' || echo 0)"
+    if [[ "$rule_count" -eq 4 ]]; then
+        chk_pass "Policy routing rules correct (4 ISP_1/ISP_2 rules)"
+    elif [[ "$rule_count" -eq 0 ]]; then
+        chk_warn "No ISP_1/ISP_2 policy rules — single-NIC or setuproutes failed"
+    elif [[ "$rule_count" -gt 4 ]]; then
+        chk_fail "Duplicate policy rules ($rule_count) — flush bug; restart container"
+    else
+        chk_warn "Partial policy rules ($rule_count/4)"
+    fi
+
+    # 10. conntrack UDP timeout raised on host (best-effort, host ns)
+    if command -v sysctl >/dev/null 2>&1; then
+        local cto
+        cto="$(sysctl -n net.netfilter.nf_conntrack_udp_timeout 2>/dev/null || echo '')"
+        if [[ -n "$cto" && "$cto" -ge 120 ]]; then
+            chk_pass "Host conntrack UDP timeout = ${cto}s"
+        elif [[ -n "$cto" ]]; then
+            chk_warn "Host conntrack UDP timeout = ${cto}s (expected >= 120; re-run install.sh)"
+        else
+            chk_warn "Cannot read host conntrack timeout (not on NAS host?)"
+        fi
+    fi
+
+    # 11. Peer path quality (relayed peers = degraded)
+    if command -v jq >/dev/null 2>&1; then
+        local relayed
+        relayed="$(zt -j listpeers 2>/dev/null \
+            | jq '[.[] | select(.role=="LEAF") | select((.paths|map(select(.active))|length)==0)] | length' 2>/dev/null || echo 0)"
+        if [[ "${relayed:-0}" -eq 0 ]]; then
+            chk_pass "All leaf peers have a direct path"
+        else
+            chk_warn "$relayed leaf peer(s) relayed — check router UDP 9993 forward"
+        fi
+    fi
+
+    # ─── Summary ─────────────────────────────────────────────────────────────
+    hdr "Summary"
+    if [[ "$DR_FAIL" -gt 0 ]]; then
+        err "${DR_FAIL} failed, ${DR_WARN} warning(s) — action required"
+        exit 1
+    elif [[ "$DR_WARN" -gt 0 ]]; then
+        warn "${DR_WARN} warning(s), 0 failures — review above"
+        exit 0
+    else
+        ok "All checks passed — moon is healthy"
+        exit 0
+    fi
+}
+
+# ─── Dispatch ────────────────────────────────────────────────────────────────
+main() {
+    local cmd="${1:-help}"
+    if [[ $# -gt 0 ]]; then shift; fi
+    case "$cmd" in
+        install)            cmd_install "$@" ;;
+        update)             cmd_update "$@" ;;
+        status|st)          cmd_status "$@" ;;
+        doctor|diagnose)    cmd_doctor "$@" ;;
+        peers)              cmd_peers "$@" ;;
+        moon-id|moonid)     cmd_moon_id "$@" ;;
+        backup)             cmd_backup "$@" ;;
+        restore)            cmd_restore "$@" ;;
+        logs)               cmd_logs "$@" ;;
+        version|--version|-v) cmd_version ;;
+        help|--help|-h)     cmd_help ;;
+        *)                  err "unknown command: $cmd"; echo; cmd_help; exit 64 ;;
+    esac
+}
+
+main "$@"

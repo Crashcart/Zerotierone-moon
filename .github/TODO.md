@@ -8,6 +8,16 @@
   - Moon generation, identity persistence, and update tooling complete
   - Stability improvements: NET_RAW, NOTRACK, conntrack timeout, healthcheck, 8 MB UDP buffers (2× BDP for J3455), fq qdisc, local.conf port pinning
 
+- [x] **Polish into a cohesive product**
+  - Unified `zmoon` CLI: install / update / status / doctor / peers / moon-id / backup / restore / logs / version
+  - `zmoon doctor` — automated PASS/WARN/FAIL diagnostics with non-zero exit (cron-friendly)
+  - Dependency-free test suite (`tests/run.sh`) wired into CI; all shell scripts ShellCheck-clean
+  - **Critical fix**: removed illegal `-i` in nat/POSTROUTING that aborted the entire
+    iptables ruleset on every DSM host (NOTRACK/FORWARD/MASQUERADE were never applying);
+    replaced with mangle `MARK` + `-m mark` MASQUERADE scoping
+  - Audit fixes: `ip rule` flush loop, `.env` gitignored, entrypoint process-death
+    detection, bounded backups, macvlan `--ip-range`, network-ID validation
+
 ---
 
 ## DS918+ Setup Notes
