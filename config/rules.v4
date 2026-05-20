@@ -23,6 +23,10 @@ COMMIT
 # MASQUERADE to only ZeroTier-forwarded traffic.
 *mangle
 -A FORWARD -i zt+ -j MARK --set-mark 0x2a
+# Clamp TCP MSS to PMTU so that large-MSS segments don't black-hole when the
+# ZeroTier overlay MTU (typically ~1400B effective) is less than the physical
+# NIC MTU (1500B). Applies on both directions of every SYN or SYN-ACK.
+-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 COMMIT
 
 # Allow forwarding between ZeroTier overlay and physical NICs.

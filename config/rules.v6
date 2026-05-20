@@ -1,0 +1,21 @@
+# ip6tables rules for ZeroTier IPv6 gateway
+# Map into container: -v /volume1/docker/zerotier/iptables:/etc/iptables
+# File path inside container: /etc/iptables/rules.v6
+#
+# NOTE: This file is a reference template. install.sh writes the production
+# copy to $DATA_DIR/iptables/rules.v6 with actual interface names substituted.
+#
+# IPv6 uses global unicast addresses — NAT is not needed or used.
+# ip6tables-restore is ATOMIC: a single invalid line aborts the entire restore.
+
+# Allow ZeroTier-to-LAN and LAN-to-ZeroTier IPv6 forwarding.
+# ICMPv6 MUST be permitted for Neighbor Discovery (NDP), PMTU discovery,
+# and Router Advertisements — blocking it breaks all IPv6 connectivity.
+*filter
+-A FORWARD -i zt+ -o eth0 -j ACCEPT
+-A FORWARD -i zt+ -o eth1 -j ACCEPT
+-A FORWARD -i eth0 -o zt+ -j ACCEPT
+-A FORWARD -i eth1 -o zt+ -j ACCEPT
+-A FORWARD -p icmpv6 -j ACCEPT
+-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+COMMIT

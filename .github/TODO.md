@@ -2,6 +2,12 @@
 
 ## Review Items
 
+- [x] **IPv6 ip6tables + TCP MSS clamping** — complete (2026-05-20)
+  - Add `TCPMSS --clamp-mss-to-pmtu` to mangle table in `config/rules.v4` and `install.sh` generated copy
+  - Create `config/rules.v6` with IPv6 FORWARD + ICMPv6 rules (no NAT for IPv6)
+  - Apply `ip6tables-restore` in `entrypoint.sh` if `rules.v6` exists
+  - Add tests to `tests/run.sh` for MSS clamping and IPv6 rules
+
 - [x] **Implement ZeroTier on DS918+ (dual NIC)** — https://docs.zerotier.com/synology/
   - Custom `zerotier-moon` image (Alpine 3.21, built locally via `Dockerfile`)
   - Dual macvlan networks (macvlan-lan1 / macvlan-lan2) with policy routing
