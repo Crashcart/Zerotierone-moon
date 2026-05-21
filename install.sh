@@ -255,6 +255,10 @@ ok "rules.v4"
 # container start. No *nat table — IPv6 uses global unicast addresses.
 # ICMPv6 MUST be permitted for NDP, PMTU discovery, and Router Advertisements.
 cat > "$DATA_DIR/iptables/rules.v6" <<EOF
+*mangle
+-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+COMMIT
+
 *filter
 -A FORWARD -i zt+ -o ${LAN1_IF} -j ACCEPT
 -A FORWARD -i zt+ -o ${LAN2_IF} -j ACCEPT

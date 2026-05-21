@@ -108,6 +108,7 @@ else
     echo -e "  ${DIM}skip${NC} iptables-restore not available"
 fi
 
+assert_grep "rules.v6 has *mangle MSS clamp"  'TCPMSS.*clamp-mss-to-pmtu'      cat config/rules.v6
 assert_grep "rules.v6 has FORWARD accept"    'FORWARD.*zt\+.*ACCEPT'          cat config/rules.v6
 assert_grep "rules.v6 allows ICMPv6"         'FORWARD -p icmpv6'              cat config/rules.v6
 # IPv6 must NOT have a *nat table — NAT is not used with IPv6 global addresses
@@ -161,6 +162,8 @@ assert_grep "install.sh generates MSS clamping rule" \
     'TCPMSS.*clamp-mss-to-pmtu' cat install.sh
 assert_grep "install.sh generates rules.v6" \
     'rules\.v6' cat install.sh
+assert_grep "install.sh generates IPv6 MSS clamping" \
+    'TCPMSS.*clamp-mss-to-pmtu' cat install.sh
 assert_grep "entrypoint applies ip6tables rules" \
     'ip6tables-restore' cat entrypoint.sh
 assert_grep "update.sh prunes old backups" \

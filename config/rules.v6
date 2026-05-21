@@ -8,6 +8,13 @@
 # IPv6 uses global unicast addresses — NAT is not needed or used.
 # ip6tables-restore is ATOMIC: a single invalid line aborts the entire restore.
 
+# Clamp TCP MSS to PMTU so that large-MSS segments don't black-hole when the
+# ZeroTier overlay MTU (typically ~1400B effective) is less than the physical
+# NIC MTU (1500B). Applies on both directions of every SYN or SYN-ACK.
+*mangle
+-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+COMMIT
+
 # Allow ZeroTier-to-LAN and LAN-to-ZeroTier IPv6 forwarding.
 # ICMPv6 MUST be permitted for Neighbor Discovery (NDP), PMTU discovery,
 # and Router Advertisements — blocking it breaks all IPv6 connectivity.
