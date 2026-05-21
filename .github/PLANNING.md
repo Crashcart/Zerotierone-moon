@@ -22,7 +22,7 @@
 - [2026-05-20] Phase 0 complete: re-imported `copilot-instructions.md` per new goal; re-read all governance files
 - [2026-05-20] MSS clamping: add `-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu` to `*mangle` in both `config/rules.v4` template and `install.sh` generated copy
 - [2026-05-20] IPv6: create `config/rules.v6` template (FORWARD + ICMPv6, no NAT); `install.sh` generates data-dir copy with real interface names; `entrypoint.sh` applies via `ip6tables-restore`
-- [2026-05-20] Note: session push-and-merge-to-dev workflow is user-authorized (overrides copilot-instructions.md Rule #3 for this repo)
+- [2026-05-20] **REPO RULE (user-authorized, permanent)**: Always push to `dev` and auto-merge PRs to `dev`. This overrides copilot-instructions.md Rule #3 (no auto-merge) and Rule #11 (target alpha) for this repository. Branch hierarchy is `dev → alpha → beta → main`; promotion to alpha/beta/main requires explicit human instruction.
 - [2026-05-20] Phase 3 complete: DEVELOPER subagent added IPv6 *mangle TCPMSS to rules.v6; PM added install.sh parity and 2 new test assertions (49 total)
 - [2026-05-20] IPv6 MSS clamping PR #18 open on dev — awaiting human review per Rule #3
 - [2026-05-20] Governance note: AI-rules v1.5.1 imported (claude-behavior.md); previous session-specific rules erased; copilot-instructions.md + claude-behavior.md now govern
