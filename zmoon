@@ -344,6 +344,24 @@ cmd_doctor() {
         fi
     fi
 
+    # 12. IPv6 forwarding enabled on host
+    if command -v sysctl >/dev/null 2>&1; then
+        local ipv6fwd
+        ipv6fwd="$(sysctl -n net.ipv6.conf.all.forwarding 2>/dev/null || echo '')"
+        if [[ "$ipv6fwd" == "1" ]]; then
+            chk_pass "Host IPv6 forwarding enabled (net.ipv6.conf.all.forwarding=1)"
+        else
+            chk_fail "Host IPv6 forwarding disabled — run: sysctl -w net.ipv6.conf.all.forwarding=1"
+        fi
+    fi
+
+    # 13. ip6tables FORWARD rules loaded in container
+    if docker exec "$CONTAINER_NAME" ip6tables -L FORWARD -n 2>/dev/null | grep -q ACCEPT; then
+        chk_pass "ip6tables FORWARD rules present in container"
+    else
+        chk_warn "No ip6tables FORWARD ACCEPT rules — apply ip6tables rules: ip6tables-restore < /etc/iptables/rules.v6"
+    fi
+
     # ─── Summary ─────────────────────────────────────────────────────────────
     hdr "Summary"
     if [[ "$DR_FAIL" -gt 0 ]]; then
