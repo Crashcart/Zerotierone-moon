@@ -340,3 +340,67 @@ COMMIT
 ruleset *and* a static regression check that fails if `-i ` ever reappears in
 a POSTROUTING line. `build.yml` already runs the same `--test`. `zmoon doctor`
 checks NOTRACK/FORWARD rules are actually live at runtime.
+
+---
+
+## TCP MSS Clamping (2026-05-20)
+
+**Problem**: When forwarding TCP through the ZeroTier overlay, the overlay MTU (~1400 B)
+is smaller than the physical NIC MTU (1500 B). TCP's PMTU discovery relies on ICMP
+"frag-needed" messages, but routers and hosts sometimes silently drop them. The result
+is a "path-MTU black hole": the connection appears to open successfully but then
+large transfers silently stall.
+
+**Fix**: `TCPMSS --clamp-mss-to-pmtu` in the `*mangle` FORWARD chain, applied to
+SYN and SYN-RST packets. This rewrites the TCP MSS option in the handshake so the
+sender never proposes a segment size larger than the path allows — no fragmentation,
+no black hole.
+
+```
+*mangle
+-A FORWARD -i zt+ -j MARK --set-mark 0x2a
+-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+COMMIT
+```
+
+Applied to both `config/rules.v4` (IPv4) and `config/rules.v6` (IPv6).
+
+---
+
+## IPv6 Gateway Support (2026-05-20)
+
+**Problem**: `ip6tables` was installed in the Docker image but never configured or
+applied. No `rules.v6` existed, `entrypoint.sh` never called `ip6tables-restore`,
+and the host sysctl `net.ipv6.conf.all.forwarding` was never enabled. IPv6 traffic
+forwarded through the ZeroTier overlay was silently dropped.
+
+**Fix — `config/rules.v6`** (new file):
+
+```
+*mangle
+-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+COMMIT
+
+*filter
+-A FORWARD -i zt+ -o eth0 -j ACCEPT
+-A FORWARD -i zt+ -o eth1 -j ACCEPT
+-A FORWARD -i eth0 -o zt+ -j ACCEPT
+-A FORWARD -i eth1 -o zt+ -j ACCEPT
+-A FORWARD -p icmpv6 -j ACCEPT
+-A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+COMMIT
+```
+
+No `*nat` table — IPv6 global addresses do not require NAT.
+
+ICMPv6 is unconditionally permitted: NDP (Neighbor Discovery), PMTU discovery, and
+Router Advertisements all use ICMPv6. Blocking any of it breaks IPv6 connectivity.
+
+**Fix — `entrypoint.sh`**: applies `ip6tables-restore` on startup if `rules.v6` exists.
+
+**Fix — `install.sh`**: adds `net.ipv6.conf.all.forwarding=1` to `/etc/sysctl.conf`
+and applies it immediately. Without this the Linux kernel silently drops all forwarded
+IPv6 packets regardless of ip6tables rules.
+
+**Detection**: `zmoon doctor` checks 12 (host IPv6 forwarding) and 13 (ip6tables
+FORWARD rules present in container) surface both conditions as PASS/WARN/FAIL.
