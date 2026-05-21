@@ -106,7 +106,17 @@ else
 fi
 
 sysctl -w net.ipv4.ip_forward=1 &>/dev/null
-ok "IP forwarding active"
+ok "IPv4 forwarding active"
+
+if grep -q "net.ipv6.conf.all.forwarding=1" /etc/sysctl.conf 2>/dev/null; then
+    ok "net.ipv6.conf.all.forwarding already set in /etc/sysctl.conf"
+else
+    echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
+    ok "Added net.ipv6.conf.all.forwarding=1 to /etc/sysctl.conf"
+fi
+
+sysctl -w net.ipv6.conf.all.forwarding=1 &>/dev/null
+ok "IPv6 forwarding active"
 
 # Host-level kernel tuning — applied persistently to /etc/sysctl.conf.
 # Socket buffers: 8 MB rmem/wmem is ~2× BDP for ZeroTier on 1GbE (practical
