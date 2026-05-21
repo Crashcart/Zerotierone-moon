@@ -430,11 +430,15 @@ The following are applied automatically by `install.sh` and `entrypoint.sh`:
 | Main-table fallback route | `setuproutes.sh` | Allows ZeroTier to reach public planet/root servers outside local subnets |
 | GRO/TSO/GSO NIC offload | `install.sh` ethtool | Lets J3455 hardware batch packets |
 | Alpine 3.21 | `Dockerfile` | Newer zerotier-one package (past 1.14.0 Synology bug) |
+| TCP MSS clamping | `config/rules.v4` + `config/rules.v6` | `TCPMSS --clamp-mss-to-pmtu` on SYN/SYN-ACK in `*mangle`; prevents silent TCP black holes when ZT overlay MTU (~1400B effective) < physical NIC MTU (1500B) |
+| IPv6 FORWARD + MSS | `config/rules.v6` | ip6tables mirror of the IPv4 ruleset — ZT↔LAN forwarding, ICMPv6 (required for NDP/PMTU/RAs), MSS clamping; no NAT (IPv6 uses global addresses) |
+| IPv6 forwarding on host | `install.sh` sysctl | `net.ipv6.conf.all.forwarding=1` — without this the kernel silently drops forwarded IPv6 packets regardless of ip6tables rules |
 
 > **macvlan + port forwarding:** The `ports:` directive in `docker-compose.yml` has **no effect** under macvlan networking — Docker does not create DNAT rules for macvlan containers. Configure your router to forward **UDP 9993** directly to the container's macvlan IP (e.g. `192.168.1.253`). `portMappingEnabled: true` in `local.conf` will attempt UPnP/NAT-PMP automatically if your router supports it.
 
 `zmoon doctor` automates the full diagnostic checklist (NET_RAW, NOTRACK, socket
-buffers, fq qdisc, policy-routing rule count, conntrack timeout, relayed peers)
+buffers, fq qdisc, policy-routing rule count, conntrack timeout, relayed peers,
+host IPv6 forwarding, container ip6tables rules) across 13 PASS/WARN/FAIL checks
 and exits non-zero if anything fails — wire it into DSM Task Scheduler for
 unattended monitoring. See `.github/STABILITY.md` for the underlying rationale.
 
