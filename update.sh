@@ -21,6 +21,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
+# shellcheck source=lib/compose.sh
+source "$SCRIPT_DIR/lib/compose.sh"
 
 # ─── Colours ───────────────────────────────────────────────────────────────────
 R='\033[0;31m' G='\033[0;32m' Y='\033[1;33m' B='\033[0;34m' NC='\033[0m'
@@ -116,12 +118,17 @@ if [[ -n "$UPGRADE_BRANCH" ]]; then
     step "Switching repo to branch: $UPGRADE_BRANCH"
     command -v git &>/dev/null || die "git not found — cannot switch branches"
     git -C "$SCRIPT_DIR" fetch origin || die "git fetch failed"
+    # docker-compose.yml is a generated artefact — discard it so checkout never conflicts
+    git -C "$SCRIPT_DIR" checkout -- docker-compose.yml 2>/dev/null || true
     CURRENT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD)
     if [[ "$CURRENT_BRANCH" != "$UPGRADE_BRANCH" ]]; then
         git -C "$SCRIPT_DIR" checkout "$UPGRADE_BRANCH" || die "git checkout $UPGRADE_BRANCH failed"
     fi
     git -C "$SCRIPT_DIR" pull origin "$UPGRADE_BRANCH" || die "git pull failed"
     ok "Repo updated to branch $UPGRADE_BRANCH ($(git -C "$SCRIPT_DIR" rev-parse --short HEAD))"
+    # Regenerate compose with current .env values so new template settings take effect
+    generate_compose
+    ok "docker-compose.yml regenerated from .env"
 fi
 
 # ─── Guard: verify moon identity is intact ────────────────────────────────────
