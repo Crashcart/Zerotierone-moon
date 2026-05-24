@@ -11,6 +11,9 @@ die()  { echo "[zerotier-moon] ERROR: $*" >&2; exit 1; }
 mkdir -p "$ZT_HOME/moons.d"
 
 # ─── Start ZeroTier daemon ─────────────────────────────────────────────────────
+# Clear stale PID file left by a previous crash — zerotier-one refuses to bind
+# port 9993 if the file exists, even when no process holds the port.
+rm -f "$ZT_HOME/zerotier-one.pid"
 log "Starting ZeroTier daemon..."
 zerotier-one "$ZT_HOME" &
 ZT_PID=$!
