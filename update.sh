@@ -55,6 +55,15 @@ moon_count_of() {
 [[ $EUID -eq 0 ]] || die "Run as root: sudo -i, then bash update.sh"
 command -v docker &>/dev/null || die "Docker not found."
 
+# Detect docker compose v2 plugin vs docker-compose v1 binary (DSM 7.0/7.1)
+if docker compose version &>/dev/null 2>&1; then
+    dc() { docker compose "$@"; }
+elif command -v docker-compose &>/dev/null 2>&1; then
+    dc() { docker-compose "$@"; }
+else
+    die "Neither 'docker compose' nor 'docker-compose' found — install Docker Compose"
+fi
+
 # ─── Parse args ───────────────────────────────────────────────────────────────
 DO_BUILD=true
 STATUS_ONLY=false
@@ -83,6 +92,13 @@ source "$ENV_FILE"
 DATA_DIR="${DATA_DIR:-/volume1/docker/zerotier}"
 CONTAINER_NAME="${CONTAINER_NAME:-zerotier-moon}"
 IMAGE_NAME="${IMAGE_NAME:-zerotier-moon}"
+
+# Validate all required networking variables are present
+_required=(LAN1_SUBNET LAN1_GATEWAY LAN1_CONTAINER_IP LAN2_SUBNET LAN2_GATEWAY LAN2_CONTAINER_IP)
+for _v in "${_required[@]}"; do
+    [[ -n "${!_v:-}" ]] || die ".env is missing required variable: $_v — re-run install.sh"
+done
+unset _required _v
 
 # ─── Status only ──────────────────────────────────────────────────────────────
 if $STATUS_ONLY; then
@@ -153,6 +169,12 @@ fi
 # ─── Rebuild image ────────────────────────────────────────────────────────────
 if $DO_BUILD; then
     step "Rebuilding Docker image: $IMAGE_NAME"
+    [[ -f "$SCRIPT_DIR/Dockerfile" ]] || die "Dockerfile not found at $SCRIPT_DIR — cannot build"
+    # Tag current image as rollback target before overwriting
+    if docker image inspect "$IMAGE_NAME" &>/dev/null 2>&1; then
+        docker tag "$IMAGE_NAME" "${IMAGE_NAME}:rollback"
+        ok "Previous image tagged as ${IMAGE_NAME}:rollback"
+    fi
     docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
     ok "Image rebuilt"
 else
@@ -191,20 +213,38 @@ recreate_macvlan "macvlan-lan2" "$LAN2_IF" "$LAN2_SUBNET" "$LAN2_GATEWAY" "$LAN2
 # ─── Restart container ────────────────────────────────────────────────────────
 step "Restarting container"
 
-docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --force-recreate
-ok "Container restarted"
+# Graceful stop first — gives ZeroTier 15s to flush state cleanly
+docker stop --time=15 "$CONTAINER_NAME" 2>/dev/null && ok "Container stopped gracefully" || warn "Container was not running"
+# Belt-and-suspenders: clear stale PID file so zerotier-one can bind port 9993
+rm -f "$DATA_DIR/zerotier-one/zerotier-one.pid"
+
+dc -f "$SCRIPT_DIR/docker-compose.yml" up -d --force-recreate
+ok "Container started"
 
 # ─── Wait for ZeroTier to be ready ────────────────────────────────────────────
 step "Waiting for ZeroTier"
 
-for i in $(seq 1 30); do
+ZT_READY=false
+for i in $(seq 1 60); do
     if docker exec "$CONTAINER_NAME" zerotier-cli status &>/dev/null 2>&1; then
         ok "ZeroTier ready (${i}s)"
+        ZT_READY=true
         break
     fi
-    [[ $i -eq 30 ]] && { warn "ZeroTier not ready after 30s — check: docker logs $CONTAINER_NAME"; }
     sleep 1
 done
+
+if ! $ZT_READY; then
+    warn "ZeroTier not ready after 60s — attempting rollback"
+    if docker image inspect "${IMAGE_NAME}:rollback" &>/dev/null 2>&1; then
+        docker tag "${IMAGE_NAME}:rollback" "$IMAGE_NAME"
+        docker stop --time=10 "$CONTAINER_NAME" 2>/dev/null || true
+        rm -f "$DATA_DIR/zerotier-one/zerotier-one.pid"
+        dc -f "$SCRIPT_DIR/docker-compose.yml" up -d --force-recreate
+        die "Update failed — rolled back to previous image. Check: docker logs $CONTAINER_NAME"
+    fi
+    die "ZeroTier not ready after 60s. Check: docker logs $CONTAINER_NAME"
+fi
 
 # ─── Report ───────────────────────────────────────────────────────────────────
 ZT_STATUS=$(docker exec "$CONTAINER_NAME" zerotier-cli status 2>/dev/null || echo "not ready")
