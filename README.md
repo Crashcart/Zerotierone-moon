@@ -42,6 +42,7 @@ cp .env.example .env && vi .env
 | `zmoon backup` | Back up the moon identity (auto-prunes to last 5) |
 | `zmoon restore <dir>` | Restore the moon identity from a backup |
 | `zmoon logs [-f]` | Show / follow container logs |
+| `zmoon autoupdate` | Auto-update check (run from cron — respects `AUTO_UPDATE` in `.env`) |
 | `zmoon version` | zmoon + running ZeroTier version |
 
 `zmoon install` / `zmoon update` simply delegate to `install.sh` / `update.sh`, so the
@@ -159,35 +160,58 @@ Repeat for LAN 2:
 
 ---
 
-## Step 5 — Deploy the Container (Container Manager UI)
+## Step 5 — Deploy the Container
 
-Container Manager → Container → Create → select **Create from URL** (or import the compose file below).
+> **Recommended**: skip steps 2–5 entirely and use `zmoon install` — it handles IP forwarding,
+> directories, macvlan networks, image build, and container start in one command.
+
+If you prefer manual setup via Container Manager UI:
+
+1. Build the image on the NAS via SSH: `docker build -t zerotier-moon /path/to/this/repo`
+2. Container Manager → Container → Create → import the compose file below
 
 ### Compose file
+
+`install.sh` generates `docker-compose.yml` with your values filled in. The template it uses:
 
 ```yaml
 services:
   zerotier:
-    image: ddeitterick/zerotier-gateway
+    image: zerotier-moon        # built locally by install.sh from Dockerfile
     container_name: zerotier-moon
     restart: always
     devices:
       - /dev/net/tun
     cap_add:
       - NET_ADMIN
+      - NET_RAW                 # required for iptables raw table (NOTRACK)
+      - SYS_ADMIN
+    sysctls:
+      net.core.rmem_max: 8388608
+      net.core.wmem_max: 8388608
+      net.core.netdev_max_backlog: 5000
+      net.ipv4.udp_rmem_min: 8192
+      net.ipv4.udp_wmem_min: 8192
+    healthcheck:
+      test: ["CMD", "zerotier-cli", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     networks:
       macvlan-lan1:
-        ipv4_address: 192.168.1.253
-    ports:
-      - "9993:9993/udp"
+        ipv4_address: 192.168.1.253    # your LAN 1 container IP
+      macvlan-lan2:
+        ipv4_address: 172.16.0.253     # your LAN 2 container IP
     volumes:
       - /volume1/docker/zerotier/zerotier-one:/var/lib/zerotier-one
       - /volume1/docker/zerotier/iptables:/etc/iptables
       - /volume1/docker/zerotier/iproute2/rt_tables:/etc/iproute2/rt_tables
+      - /volume1/docker/zerotier/local.conf:/var/lib/zerotier-one/local.conf:ro
     environment:
       - NETWORK_IDS=<YOUR_ZT_NETWORK_ID>
-      - DOCKER_HOST=192.168.1.253
-      - MULTIPATH=Enabled
+      - GENERATE_MOON=true
+      - MOON_ENDPOINTS=192.168.1.253/9993,172.16.0.253/9993
 
 networks:
   macvlan-lan1:
@@ -196,9 +220,8 @@ networks:
     external: true
 ```
 
-After the container is created, **attach the second network**:
-
-Container Manager → Container → zerotier-moon → Edit → Network → Add `macvlan-lan2` → assign a static IP (e.g. `172.16.x.253`).
+> **NOTE:** `ports:` has no effect under macvlan networking. Forward **UDP 9993** on your
+> router directly to the container's macvlan IP (e.g. `192.168.1.253`).
 
 ---
 
@@ -322,6 +345,8 @@ ip rule add from $P2_NET table $TBL2
 
 ### `config/rules.v4`
 
+Reference template — `install.sh` writes the production copy with your interface names.
+
 ```
 *raw
 -A PREROUTING -p udp --dport 9993 -j NOTRACK
@@ -330,6 +355,7 @@ COMMIT
 
 *mangle
 -A FORWARD -i zt+ -j MARK --set-mark 0x2a
+-A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 COMMIT
 
 *filter
@@ -385,27 +411,58 @@ Add a rule: **Allow** | Source: Any | Port: 9993 | Protocol: UDP
 
 ## Updating
 
-Use `update.sh` to safely rebuild and restart without touching the moon identity:
+`zmoon update` safely rebuilds and restarts without touching the moon identity:
 
 ```sh
 # Rebuild image and restart (identity is backed up automatically)
-sudo bash update.sh
+zmoon update
 
 # Skip rebuild, just restart container (e.g. after a reboot)
-sudo bash update.sh --no-build
+zmoon update --no-build
 
 # Upgrade to a different branch before rebuilding
-sudo bash update.sh --branch main   # stable
-sudo bash update.sh --branch beta
-sudo bash update.sh --branch dev    # latest
+zmoon update --branch main   # stable
+zmoon update --branch beta
+zmoon update --branch dev    # latest
 
 # Check current status only
-sudo bash update.sh --status
+zmoon update --status
 ```
 
-`update.sh` always verifies `identity.secret` exists before doing anything, backs up the
-moon identity to a timestamped directory, and recreates macvlan networks if they were lost
-on reboot.
+`zmoon update` always verifies `identity.secret` exists before doing anything, backs up the
+moon identity to a timestamped directory, regenerates `docker-compose.yml` from the current
+template and your `.env` values, and recreates macvlan networks if they were lost on reboot.
+
+### Old install — bring current (one-time)
+
+If your install predates the `zmoon` CLI:
+
+```sh
+sudo ln -sf /volume1/docker/zerotierone-moon/zmoon /usr/local/bin/zmoon
+zmoon update --branch dev
+```
+
+### Daily auto-update
+
+Enable in `.env`:
+
+```sh
+AUTO_UPDATE=true
+AUTO_UPDATE_BRANCH=dev   # or: main, beta
+```
+
+Add to **DSM Task Scheduler** (Control Panel → Task Scheduler → Create → Scheduled Task → User-defined script):
+
+- **User**: `root` | **Schedule**: Daily, 03:00
+- **Command**: `zmoon autoupdate`
+
+`zmoon autoupdate` checks the remote for new commits, no-ops if already up-to-date or if
+`AUTO_UPDATE=false`, and logs to `$DATA_DIR/autoupdate.log` (1 MB rotation).
+
+```sh
+# Check the log
+tail -f /volume1/docker/zerotier/autoupdate.log
+```
 
 ---
 

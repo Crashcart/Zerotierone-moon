@@ -126,9 +126,6 @@ if [[ -n "$UPGRADE_BRANCH" ]]; then
     fi
     git -C "$SCRIPT_DIR" pull origin "$UPGRADE_BRANCH" || die "git pull failed"
     ok "Repo updated to branch $UPGRADE_BRANCH ($(git -C "$SCRIPT_DIR" rev-parse --short HEAD))"
-    # Regenerate compose with current .env values so new template settings take effect
-    generate_compose
-    ok "docker-compose.yml regenerated from .env"
 fi
 
 # ─── Guard: verify moon identity is intact ────────────────────────────────────
@@ -216,6 +213,12 @@ recreate_macvlan() {
 
 recreate_macvlan "macvlan-lan1" "$LAN1_IF" "$LAN1_SUBNET" "$LAN1_GATEWAY" "$LAN1_CONTAINER_IP"
 recreate_macvlan "macvlan-lan2" "$LAN2_IF" "$LAN2_SUBNET" "$LAN2_GATEWAY" "$LAN2_CONTAINER_IP"
+
+# ─── Regenerate docker-compose.yml ───────────────────────────────────────────
+# Always regenerate so the compose file reflects the current .env values and
+# the current lib/compose.sh template. This also covers the case where the
+# file is absent (fresh clone, gitignore cleanup, first run after migration).
+generate_compose
 
 # ─── Restart container ────────────────────────────────────────────────────────
 step "Restarting container"

@@ -29,6 +29,21 @@ jobs:
       run: |
         bash tests/run.sh
 
+    - name: Generate docker-compose.yml for validation
+      run: |
+        export SCRIPT_DIR="$PWD"
+        export IMAGE_NAME="zerotier-moon"
+        export CONTAINER_NAME="zerotier-moon"
+        export LAN1_CONTAINER_IP="192.168.1.253"
+        export LAN2_CONTAINER_IP="172.16.0.253"
+        export DATA_DIR="/tmp/zerotier"
+        export ZT_NETWORK_ID="0000000000000001"
+        export ZT_PUBLIC_ENDPOINT=""
+        # shellcheck disable=SC1091
+        source lib/compose.sh
+        generate_compose
+        echo "✓ docker-compose.yml generated"
+
     - name: Validate docker-compose.yml
       run: |
         docker compose config > /dev/null 2>&1 && echo "✓ docker-compose.yml is valid" || echo "⚠️ docker-compose.yml may have issues (docker not fully available in CI)"

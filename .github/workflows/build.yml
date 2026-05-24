@@ -13,6 +13,25 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Generate docker-compose.yml from lib/compose.sh (CI mock values)
+      run: |
+        # docker-compose.yml is gitignored (generated artefact). Generate it
+        # here with CI-safe placeholder values so the validation steps below
+        # can run against a real file that exercises the same template path
+        # that install.sh and update.sh use on the NAS.
+        export SCRIPT_DIR="$PWD"
+        export IMAGE_NAME="zerotier-moon"
+        export CONTAINER_NAME="zerotier-moon"
+        export LAN1_CONTAINER_IP="192.168.1.253"
+        export LAN2_CONTAINER_IP="172.16.0.253"
+        export DATA_DIR="/tmp/zerotier"
+        export ZT_NETWORK_ID="0000000000000001"
+        export ZT_PUBLIC_ENDPOINT=""
+        # shellcheck disable=SC1091
+        source lib/compose.sh
+        generate_compose
+        echo "✓ docker-compose.yml generated from lib/compose.sh"
+
     - name: Validate docker-compose.yml
       run: |
         docker compose config > /dev/null 2>&1 || (echo "❌ Invalid docker-compose.yml" && exit 1)

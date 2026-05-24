@@ -78,7 +78,7 @@ first_moon_id() {
 
 # ─── help / version ──────────────────────────────────────────────────────────
 cmd_help() {
-    sed -n '3,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 cmd_version() {

@@ -42,7 +42,7 @@ assert_grep() {
     if "$@" 2>/dev/null | grep -qE "$pat"; then ok "$desc"; else no "$desc"; fi
 }
 
-SHELL_SCRIPTS=(install.sh update.sh entrypoint.sh zmoon config/setuproutes.sh tests/run.sh)
+SHELL_SCRIPTS=(install.sh update.sh entrypoint.sh zmoon lib/compose.sh config/setuproutes.sh tests/run.sh)
 
 # ─── 1. Shell syntax ─────────────────────────────────────────────────────────
 group "shell syntax (bash -n)"
