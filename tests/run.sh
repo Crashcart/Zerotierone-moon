@@ -170,6 +170,10 @@ assert_grep "update.sh prunes old backups" \
     'Pruned old backups' cat update.sh
 assert_grep "entrypoint detects ZeroTier process death" \
     'kill -0' cat entrypoint.sh
+assert_grep "zmoon help lists 'autoupdate'"              'autoupdate'           ./zmoon help
+assert_grep ".env.example has AUTO_UPDATE"               'AUTO_UPDATE'          cat .env.example
+assert_grep ".env.example has AUTO_UPDATE_BRANCH"        'AUTO_UPDATE_BRANCH'   cat .env.example
+assert_grep "update.sh regenerates compose after pull"   'generate_compose'     cat update.sh
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

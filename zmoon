@@ -14,6 +14,7 @@
 #   zmoon backup                  Back up moon identity (keeps last 5)
 #   zmoon restore <dir>           Restore moon identity from a backup
 #   zmoon logs [-f]               Show container logs
+#   zmoon autoupdate              Auto-update if AUTO_UPDATE=true in .env
 #   zmoon version                 Print zmoon + ZeroTier versions
 #   zmoon help                    Show this help
 # ─────────────────────────────────────────────────────────────────────────────
@@ -376,6 +377,56 @@ cmd_doctor() {
     fi
 }
 
+# ─── autoupdate ──────────────────────────────────────────────────────────────
+cmd_autoupdate() {
+    load_env
+    local enabled="${AUTO_UPDATE:-false}"
+    local branch="${AUTO_UPDATE_BRANCH:-dev}"
+    local log_file="$DATA_DIR/autoupdate.log"
+
+    mkdir -p "$DATA_DIR"
+    # Rotate log at 1 MB
+    if [[ -f "$log_file" ]] && [[ $(stat -c%s "$log_file" 2>/dev/null || echo 0) -gt 1048576 ]]; then
+        mv "$log_file" "${log_file}.1"
+    fi
+
+    _aulog() { echo "$(date '+%Y-%m-%d %H:%M:%S') [autoupdate] $*" | tee -a "$log_file"; }
+
+    if [[ "$enabled" != "true" ]]; then
+        _aulog "disabled (AUTO_UPDATE=false in .env) — skipping"
+        exit 0
+    fi
+
+    if ! command -v git &>/dev/null; then
+        _aulog "ERROR: git not found — install via DSM Package Center"
+        exit 1
+    fi
+    if ! git -C "$SCRIPT_DIR" rev-parse --git-dir &>/dev/null; then
+        _aulog "ERROR: not a git repo — clone the repo first"
+        exit 1
+    fi
+
+    _aulog "Checking $branch for updates..."
+    if ! git -C "$SCRIPT_DIR" fetch origin "$branch" --quiet 2>/dev/null; then
+        _aulog "WARNING: git fetch failed (network?) — skipping"
+        exit 0
+    fi
+
+    local local_sha remote_sha
+    local_sha=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
+    remote_sha=$(git -C "$SCRIPT_DIR" rev-parse "origin/$branch")
+
+    if [[ "$local_sha" == "$remote_sha" ]]; then
+        _aulog "Up to date ($branch @ ${local_sha:0:7}) — nothing to do"
+        exit 0
+    fi
+
+    _aulog "Update available: ${local_sha:0:7} → ${remote_sha:0:7} on $branch"
+    _aulog "Running: zmoon update --branch $branch"
+    bash "$SCRIPT_DIR/update.sh" --branch "$branch" 2>&1 | tee -a "$log_file"
+    _aulog "Update complete"
+}
+
 # ─── Dispatch ────────────────────────────────────────────────────────────────
 main() {
     local cmd="${1:-help}"
@@ -390,6 +441,7 @@ main() {
         backup)             cmd_backup "$@" ;;
         restore)            cmd_restore "$@" ;;
         logs)               cmd_logs "$@" ;;
+        autoupdate)         cmd_autoupdate "$@" ;;
         version|--version|-v) cmd_version ;;
         help|--help|-h)     cmd_help ;;
         *)                  err "unknown command: $cmd"; echo; cmd_help; exit 64 ;;

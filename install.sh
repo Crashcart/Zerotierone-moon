@@ -14,6 +14,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 
+# Shared compose generator
+# shellcheck source=lib/compose.sh
+source "$SCRIPT_DIR/lib/compose.sh"
+
 # ─── Colours ───────────────────────────────────────────────────────────────────
 R='\033[0;31m' G='\033[0;32m' Y='\033[1;33m' B='\033[0;34m' NC='\033[0m'
 step() { echo -e "\n${B}[>]${NC} $*"; }
@@ -74,6 +78,8 @@ LAN2_CONTAINER_IP=${LAN2_CONTAINER_IP}
 DATA_DIR=${DATA_DIR}
 CONTAINER_NAME=${CONTAINER_NAME}
 IMAGE_NAME=${IMAGE_NAME}
+AUTO_UPDATE=false
+AUTO_UPDATE_BRANCH=dev
 EOF
     ok "Saved config to .env"
 fi
@@ -326,56 +332,7 @@ create_macvlan "macvlan-lan2" "$LAN2_IF" "$LAN2_SUBNET" "$LAN2_GATEWAY" "$LAN2_C
 
 # ─── Step 6: Write final docker-compose.yml ───────────────────────────────────
 step "Writing docker-compose.yml"
-
-cat > "$SCRIPT_DIR/docker-compose.yml" <<EOF
-services:
-  zerotier:
-    image: ${IMAGE_NAME}
-    container_name: ${CONTAINER_NAME}
-    restart: always
-    devices:
-      - /dev/net/tun
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-      - SYS_ADMIN
-    sysctls:
-      net.core.rmem_max: 8388608
-      net.core.wmem_max: 8388608
-      net.core.netdev_max_backlog: 5000
-      net.ipv4.udp_rmem_min: 8192
-      net.ipv4.udp_wmem_min: 8192
-    healthcheck:
-      test: ["CMD", "zerotier-cli", "status"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    networks:
-      macvlan-lan1:
-        ipv4_address: ${LAN1_CONTAINER_IP}
-      macvlan-lan2:
-        ipv4_address: ${LAN2_CONTAINER_IP}
-    # NOTE: 'ports' has no effect under macvlan networking — Docker does not
-    # create DNAT rules for macvlan containers. Port 9993/UDP must be
-    # forwarded on the upstream router directly to ${LAN1_CONTAINER_IP}.
-    volumes:
-      - ${DATA_DIR}/zerotier-one:/var/lib/zerotier-one
-      - ${DATA_DIR}/iptables:/etc/iptables
-      - ${DATA_DIR}/iproute2/rt_tables:/etc/iproute2/rt_tables
-      - ${DATA_DIR}/local.conf:/var/lib/zerotier-one/local.conf:ro
-    environment:
-      - NETWORK_IDS=${ZT_NETWORK_ID}
-      - GENERATE_MOON=true
-      - MOON_ENDPOINTS=${LAN1_CONTAINER_IP}/9993,${LAN2_CONTAINER_IP}/9993${ZT_PUBLIC_ENDPOINT:+,${ZT_PUBLIC_ENDPOINT}/9993}
-
-networks:
-  macvlan-lan1:
-    external: true
-  macvlan-lan2:
-    external: true
-EOF
-
+generate_compose
 ok "docker-compose.yml written"
 
 # ─── Step 6b: Install zmoon to PATH ──────────────────────────────────────────
