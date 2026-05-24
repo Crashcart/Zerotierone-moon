@@ -28,6 +28,15 @@ ask()  { read -rp "    $1: " "$2"; }
 # ─── Docker check ─────────────────────────────────────────────────────────────
 command -v docker &>/dev/null || die "Docker not found. Install Container Manager from DSM Package Center first."
 
+# Detect docker compose v2 plugin vs docker-compose v1 binary (DSM 7.0/7.1)
+if docker compose version &>/dev/null 2>&1; then
+    dc() { docker compose "$@"; }
+elif command -v docker-compose &>/dev/null 2>&1; then
+    dc() { docker-compose "$@"; }
+else
+    die "Neither 'docker compose' nor 'docker-compose' found — install Docker Compose"
+fi
+
 # ─── Load or create .env ──────────────────────────────────────────────────────
 step "Configuration"
 
@@ -369,6 +378,12 @@ EOF
 
 ok "docker-compose.yml written"
 
+# ─── Step 6b: Install zmoon to PATH ──────────────────────────────────────────
+step "Installing zmoon CLI"
+chmod +x "$SCRIPT_DIR/zmoon"
+ln -sf "$SCRIPT_DIR/zmoon" /usr/local/bin/zmoon
+ok "zmoon installed → /usr/local/bin/zmoon (run 'zmoon update' from anywhere)"
+
 # ─── Step 7: Start the container ─────────────────────────────────────────────
 step "Starting container"
 
@@ -378,7 +393,7 @@ if docker inspect "$CONTAINER_NAME" &>/dev/null; then
     docker rm -f "$CONTAINER_NAME"
 fi
 
-docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
+dc -f "$SCRIPT_DIR/docker-compose.yml" up -d
 ok "Container started: $CONTAINER_NAME"
 
 # ─── Step 8: Wait and report ─────────────────────────────────────────────────
@@ -410,8 +425,11 @@ echo "       docker exec $CONTAINER_NAME ls /var/lib/zerotier-one/moons.d/"
 echo "  4. On every client, run:"
 echo "       zerotier-cli orbit <MOON_ID> <MOON_ID>"
 echo
-echo "  Useful commands:"
-echo "    docker logs -f $CONTAINER_NAME"
-echo "    docker exec $CONTAINER_NAME zerotier-cli status"
-echo "    docker exec $CONTAINER_NAME zerotier-cli listpeers"
+echo "  Update (one command, from anywhere):"
+echo "    zmoon update"
+echo
+echo "  Other useful commands:"
+echo "    zmoon status       — ZT status + peers"
+echo "    zmoon doctor       — 13-point health check"
+echo "    zmoon logs         — follow container logs"
 echo
