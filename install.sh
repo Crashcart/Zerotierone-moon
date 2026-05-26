@@ -59,7 +59,7 @@ else
     ask "LAN 2 subnet (e.g. 172.16.0.0/24)"           LAN2_SUBNET
     ask "LAN 2 gateway (e.g. 172.16.0.1)"             LAN2_GATEWAY
     ask "Container IP on LAN 2 (e.g. 172.16.0.253)"   LAN2_CONTAINER_IP
-    ask "Public IP or DDNS for moon endpoint (leave blank to skip)" ZT_PUBLIC_ENDPOINT
+    ask "Public static IP for moon endpoint — IP address only, NOT a hostname/DDNS (leave blank to skip)" ZT_PUBLIC_ENDPOINT
 
     DATA_DIR="/volume1/docker/zerotier"
     CONTAINER_NAME="zerotier-moon"

@@ -25,6 +25,10 @@ A moon **supplements** ZeroTier's public planets — nodes still use public plan
 
 **Moon vs Network Controller:** A moon is a root/relay server (VL1). A network controller manages membership and policies (VL2). They are completely separate — this repo is a moon only.
 
+> **stableEndpoints require bare IP addresses.** ZeroTier does NOT resolve hostnames or DDNS
+> names in `stableEndpoints`. Always use a static IPv4/IPv6 address. Setting a hostname
+> silently produces a non-functional endpoint with no error message.
+
 ---
 
 ## 2. Moon Generation Process
@@ -212,7 +216,7 @@ GitHub: https://github.com/zerotier/zeronsd
 - [x] Upgrade Alpine 3.19 → 3.21 in `Dockerfile` (post-1.14.0 zerotier-one package, avoids Synology listnetworks bug)
 - [x] Add `config/local.conf` with `primaryPort: 9993`, TCP fallback, interface blacklist — mounted in compose and copied by install.sh
 - [x] Add conntrack bypass (`NOTRACK`) for UDP 9993 in `config/rules.v4` and generated rules in `install.sh`
-- [x] Add UDP socket buffer tuning — 25 MB `rmem_max`/`wmem_max` in compose `sysctls` and host `/etc/sysctl.conf` via `install.sh`
+- [x] Add UDP socket buffer tuning — 8 MB `rmem_max`/`wmem_max` in compose `sysctls` and host `/etc/sysctl.conf` via `install.sh` (25 MB was oversized and caused cache pressure on J3455; ~2× BDP for ZT on 1GbE is sufficient)
 - [x] Add Docker healthcheck using `zerotier-cli status` (30s interval, 3 retries)
 - [x] Add conntrack UDP timeout → 300s in `entrypoint.sh` (belt-and-suspenders alongside NOTRACK)
 - [x] Add `fq` qdisc on ZeroTier interface in `entrypoint.sh` (reduces bufferbloat under load)

@@ -261,15 +261,18 @@ Edit `/var/lib/zerotier-one/moon.json` — find the `"stableEndpoints"` array an
 ]
 ```
 
-If the NAS has a public IP or DDNS hostname, add that too:
+If the NAS has a static public IP, add it too:
 
 ```json
 "stableEndpoints": [
   "192.168.1.253/9993",
   "172.16.x.253/9993",
-  "<PUBLIC_IP_OR_DDNS>/9993"
+  "<PUBLIC_IP>/9993"
 ]
 ```
+
+> **Important:** `stableEndpoints` requires bare IP addresses — ZeroTier does **not** resolve
+> hostnames or DDNS names. Use the actual IPv4/IPv6 address only.
 
 Compile and deploy the moon:
 

@@ -2,7 +2,7 @@
 
 > 🔒 **GOVERNANCE FILE** — Protected by Rule 10 in `copilot-instructions.md`. Follow full workflow when editing.
 
-**Last Updated**: 2026-05-24
+**Last Updated**: 2026-05-26
 **Document Purpose**: Centralized planning for multi-agent coordination, architectural decisions, and project context
 
 ---
@@ -27,6 +27,9 @@
 - [2026-05-21] AI-rules v1.14.1 imported. New rules: RULE 17 USER CHANGE AUTHORITY (user holds sole authority over rule changes; silence ≠ approval) [NON-NEGOTIABLE]; RULE 18 SEPARATION OF DUTIES (no mixing security-* with implementation roles) [NON-NEGOTIABLE]. New role: HIRING MANAGER (HR/Jordan Reyes) — all hiring gaps now route to HR first, not PM; HR does algebraic check and presents to CEO. New employee: AUDIO/STREAMING ENGINEER (Kai Nakamura) — scoped to RP-Music-Radio and MusicBot only, not applicable here. CEO SESSION EXCLUSIVITY: sub-agent Claude defaults to PM. agents/registry.json is now the authoritative roster.
 - [2026-05-24] AI-rules v1.25.0 imported. New rules: RULE 19 SESSION-START CHECK (version verification on every load; auto-bootstrap missing files; Role Announcement is NON-NEGOTIABLE) [v1.20.1]; RULE 20 MANAGER HANDOFF & BETA DELIVERY STANDARD (outgoing role must name incoming + state completed + remaining + context + target; incoming must acknowledge; Beta = runs end-to-end, demonstrable, gaps documented) [v1.24.0]. New team members: AI COMPLIANCE ENGINEER (Priya Nair, Bangalore) — session-start compliance and behavioral regression; RULE ARCHITECT (Vera Okonkwo) — rule drafting and version governance, no self-approval authority. Hiring process updated: 7–10 candidates, global distribution, code test before interviews (10/20 pass threshold), current incumbent as Candidate #1 in replacement pools. Full roster: 33 roles, 27+ confirmed hires. Rules v1.15–v1.25 also added web-design standards, HR rehire protocol, and software-factory guide (not applicable to this repo).
 - [2026-05-24] AI-rules v1.25.1 imported. Patch: session-start enforcement hook. No new rules or roles vs v1.25.0.
+- [2026-05-26] Auto-update feature + shared compose lib shipped (PR #29 merged to dev). Key changes: lib/compose.sh shared generate_compose(); update.sh fixed branch-switch conflict (git checkout -- docker-compose.yml before checkout); compose regenerated on every update; zmoon autoupdate command added; AUTO_UPDATE/AUTO_UPDATE_BRANCH in .env; 53 tests.
+- [2026-05-26] Gold-build audit (PR #30 merged to dev). Defects fixed: build.yml/test.yml now generate docker-compose.yml from lib/compose.sh in CI (file is gitignored — was failing on every push); update.sh regenerates compose unconditionally (not only on --branch); zmoon help range fixed (sed 3,19p); lib/compose.sh added to shellcheck/tests; README Step 5 replaced stale ddeitterick compose snippet; rules.v4 README snippet added TCPMSS; Updating section added old-install migration + auto-update DSM instructions. 55 tests passing.
+- [2026-05-26] Research audit: corrected DDNS bug — ZT_PUBLIC_ENDPOINT was documented as accepting DDNS hostname but stableEndpoints requires bare IP. Fixed .env.example, install.sh prompt, README Step 7, RESEARCH.md. Also corrected RESEARCH.md buffer size (25 MB → 8 MB).
 - [2026-05-20] Phase 3 complete: DEVELOPER subagent added IPv6 *mangle TCPMSS to rules.v6; PM added install.sh parity and 2 new test assertions (49 total)
 - [2026-05-20] IPv6 MSS clamping PR #18 open on dev — awaiting human review per Rule #3
 - [2026-05-20] Governance note: AI-rules v1.5.1 imported (claude-behavior.md); previous session-specific rules erased; copilot-instructions.md + claude-behavior.md now govern
