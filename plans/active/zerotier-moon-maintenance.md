@@ -22,3 +22,8 @@ No active sprint. Await user direction. On session start: check AI-rules repo fo
 - Gold-build audit — 7 defects fixed including CI compose generation (PR #30)
 - Research audit — DDNS hostname bug fixed; buffer size corrected; governance docs updated
 - AI-rules v1.28.1 loaded; RULE 23 compliance established (this file)
+- AI-rules full audit complete — all files read: rules/, agents/, notes/, tickets/, proposals/, MIGRATION.md
+  - SHA256 verified: ddf496ac94ef1e1efd24975435648392fae64b350ba9a824bdb8fb18a9fd788c (matches ack)
+  - v1.28.1 change: SHA integrity gate in scripts/verify-rules-integrity.sh (AI-rules repo only)
+  - 33 approved agent roles confirmed in agents/registry.json
+  - Self-assessment (Rule 12): no new proposals; ack.json current as of 2026-05-26
