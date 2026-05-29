@@ -49,23 +49,47 @@ if [[ -f "$ENV_FILE" ]]; then
     source "$ENV_FILE"
     ok "Loaded config from .env"
 else
-    warn ".env not found — running interactive setup (or copy .env.example to .env)"
+    # ── Auto-detect network config from ip route / ip addr ────────────────────
+    _if_subnet()  { ip route show dev "$1" proto kernel 2>/dev/null | awk 'NR==1{print $1}'; }
+    _if_gateway() { ip route show default 2>/dev/null | awk "/dev $1/ {print \$3}" | head -1; }
+    _if_ip()      { ip addr show "$1" 2>/dev/null | awk '/inet /{sub("/.*","",$2); print $2}' | head -1; }
+
+    D1_SUBNET=$(_if_subnet eth0);  D1_GW=$(_if_gateway eth0);  D1_IP=$(_if_ip eth0)
+    D2_SUBNET=$(_if_subnet eth1);  D2_GW=$(_if_gateway eth1);  D2_IP=$(_if_ip eth1)
+    # Suggest .253 on each subnet as the container IP (avoids collision with NAS or router)
+    D1_CIP="${D1_IP%.*}.253"; D2_CIP="${D2_IP%.*}.253"
+    # Detect public IP (5s timeout; blank = user can fill in later)
+    PUBLIC_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || true)
+
+    echo
+    ok "Detected  eth0 → ${D1_SUBNET:-?}  gw ${D1_GW:-?}  NAS ${D1_IP:-?}"
+    ok "Detected  eth1 → ${D2_SUBNET:-?}  gw ${D2_GW:-?}  NAS ${D2_IP:-?}"
+    [[ -n "$PUBLIC_IP" ]] && ok "Public IP → $PUBLIC_IP"
     echo
 
+    # Only required input — everything else uses detected defaults
     ask "ZeroTier Network ID (from my.zerotier.com)" ZT_NETWORK_ID
-    ask "LAN 1 subnet (e.g. 192.168.1.0/24)"         LAN1_SUBNET
-    ask "LAN 1 gateway (e.g. 192.168.1.1)"            LAN1_GATEWAY
-    ask "Container IP on LAN 1 (e.g. 192.168.1.253)"  LAN1_CONTAINER_IP
-    ask "LAN 2 subnet (e.g. 172.16.0.0/24)"           LAN2_SUBNET
-    ask "LAN 2 gateway (e.g. 172.16.0.1)"             LAN2_GATEWAY
-    ask "Container IP on LAN 2 (e.g. 172.16.0.253)"   LAN2_CONTAINER_IP
-    ask "Public static IP for moon endpoint — IP address only, NOT a hostname/DDNS (leave blank to skip)" ZT_PUBLIC_ENDPOINT
+
+    # Confirm or override — press Enter to accept detected value
+    _confirm() {
+        local prompt="$1" default="$2" varname="$3" input
+        read -rp "    ${prompt} [${default}]: " input
+        printf -v "$varname" '%s' "${input:-$default}"
+    }
+
+    echo "  Confirm network values (Enter = accept detected):"
+    _confirm "LAN 1 subnet"                                          "${D1_SUBNET}"  LAN1_SUBNET
+    _confirm "LAN 1 gateway"                                         "${D1_GW}"      LAN1_GATEWAY
+    _confirm "LAN 1 container IP"                                    "${D1_CIP}"     LAN1_CONTAINER_IP
+    _confirm "LAN 2 subnet"                                          "${D2_SUBNET}"  LAN2_SUBNET
+    _confirm "LAN 2 gateway"                                         "${D2_GW}"      LAN2_GATEWAY
+    _confirm "LAN 2 container IP"                                    "${D2_CIP}"     LAN2_CONTAINER_IP
+    _confirm "Public IP for moon endpoint (blank=skip, NOT hostname)" "${PUBLIC_IP}" ZT_PUBLIC_ENDPOINT
 
     DATA_DIR="/volume1/docker/zerotier"
     CONTAINER_NAME="zerotier-moon"
     IMAGE_NAME="zerotier-moon"
 
-    # Save to .env for future runs
     cat > "$ENV_FILE" <<EOF
 ZT_NETWORK_ID=${ZT_NETWORK_ID}
 ZT_PUBLIC_ENDPOINT=${ZT_PUBLIC_ENDPOINT}
