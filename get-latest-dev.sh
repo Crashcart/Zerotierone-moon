@@ -58,8 +58,14 @@ if [[ -d "$REPO_DIR/.git" ]]; then
         ok "zmoon → /usr/local/bin/zmoon"
     fi
 
-    step "Running update.sh"
-    bash "$REPO_DIR/update.sh"
+    # A git repo without .env was cloned but never installed — install, don't update.
+    if [[ -f "$REPO_DIR/.env" ]]; then
+        step "Running update.sh"
+        bash "$REPO_DIR/update.sh"
+    else
+        warn "No .env yet — running first-time install"
+        bash "$REPO_DIR/install.sh"
+    fi
     exit 0
 fi
 
