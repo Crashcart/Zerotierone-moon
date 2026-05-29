@@ -37,9 +37,19 @@ command -v git &>/dev/null \
 ok "git $(git --version | awk '{print $3}')"
 ok "docker $(docker --version | awk '{print $3}' | tr -d ',')"
 
-# ── Existing install ──────────────────────────────────────────────────────────
-if [[ -f "$REPO_DIR/update.sh" ]]; then
-    step "Existing install found at $REPO_DIR"
+# ── Existing git repo ────────────────────────────────────────────────────────
+if [[ -d "$REPO_DIR/.git" ]]; then
+    step "Existing repo found at $REPO_DIR"
+
+    # Pull latest dev first so update.sh itself is current
+    git -C "$REPO_DIR" fetch origin "$REPO_BRANCH" --quiet \
+        || warn "git fetch failed — proceeding with local copy"
+    git -C "$REPO_DIR" checkout -- docker-compose.yml 2>/dev/null || true
+    git -C "$REPO_DIR" checkout "$REPO_BRANCH" 2>/dev/null \
+        || warn "Could not switch to $REPO_BRANCH"
+    git -C "$REPO_DIR" pull origin "$REPO_BRANCH" \
+        || warn "git pull failed — proceeding with local copy"
+    ok "Repo updated to $REPO_BRANCH ($(git -C "$REPO_DIR" rev-parse --short HEAD))"
 
     if [[ ! -x /usr/local/bin/zmoon ]]; then
         warn "zmoon not in PATH — creating symlink"
@@ -48,9 +58,16 @@ if [[ -f "$REPO_DIR/update.sh" ]]; then
         ok "zmoon → /usr/local/bin/zmoon"
     fi
 
-    step "Pulling latest dev and rebuilding"
-    bash "$REPO_DIR/update.sh" --branch "$REPO_BRANCH"
+    step "Running update.sh"
+    bash "$REPO_DIR/update.sh"
     exit 0
+fi
+
+# ── Directory exists but is not a git repo ────────────────────────────────────
+if [[ -d "$REPO_DIR" ]]; then
+    die "$REPO_DIR exists but is not a git repository.
+    Move or remove it first:  mv $REPO_DIR ${REPO_DIR}.bak
+    Then re-run this script."
 fi
 
 # ── Fresh install ─────────────────────────────────────────────────────────────
