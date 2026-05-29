@@ -81,8 +81,27 @@ else
         printf -v "$varname" '%s' "$input"
     }
 
-    # The only always-required value — cannot be detected.
-    ask "ZeroTier Network ID (from my.zerotier.com)" ZT_NETWORK_ID
+    # ── Auto-detect ZeroTier Network ID from any prior install ────────────────
+    # 1. A migrated old .env (get-latest-dev.sh leaves it at <repo>.old/.env)
+    # 2. The ZeroTier data dir — joined networks live in networks.d/<id>.conf
+    ZT_NETWORK_ID=""
+    for old_env in "$SCRIPT_DIR.old/.env" /volume1/docker/zerotierone-moon.old/.env; do
+        if [[ -f "$old_env" ]]; then
+            _found=$(grep -E '^ZT_NETWORK_ID=' "$old_env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"')
+            [[ "$_found" =~ ^[0-9a-fA-F]{16}$ ]] && { ZT_NETWORK_ID="$_found"; ok "Network ID found in $old_env"; break; }
+        fi
+    done
+    if [[ -z "$ZT_NETWORK_ID" ]]; then
+        shopt -s nullglob
+        for conf in /volume1/docker/zerotier/zerotier-one/networks.d/*.conf; do
+            _found=$(basename "$conf" .conf)
+            [[ "$_found" =~ ^[0-9a-fA-F]{16}$ ]] && { ZT_NETWORK_ID="$_found"; ok "Network ID found in existing ZeroTier data: $ZT_NETWORK_ID"; break; }
+        done
+        shopt -u nullglob
+    fi
+
+    # Only prompt if no prior install was found — otherwise fully auto.
+    [[ -z "$ZT_NETWORK_ID" ]] && ask "ZeroTier Network ID (from my.zerotier.com)" ZT_NETWORK_ID
 
     _need "LAN 1 subnet (e.g. 192.168.1.0/24)"        LAN1_SUBNET
     _need "LAN 1 gateway (e.g. 192.168.1.1)"          LAN1_GATEWAY
