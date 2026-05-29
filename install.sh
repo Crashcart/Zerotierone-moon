@@ -61,30 +61,36 @@ else
     # Detect public IP (5s timeout; blank = user can fill in later)
     PUBLIC_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || true)
 
+    # Accept detected values automatically; only prompt for what detection missed.
+    LAN1_SUBNET="$D1_SUBNET"; LAN1_GATEWAY="$D1_GW"; LAN1_CONTAINER_IP="$D1_CIP"
+    LAN2_SUBNET="$D2_SUBNET"; LAN2_GATEWAY="$D2_GW"; LAN2_CONTAINER_IP="$D2_CIP"
+    ZT_PUBLIC_ENDPOINT="$PUBLIC_IP"
+
     echo
-    ok "Detected  eth0 → ${D1_SUBNET:-?}  gw ${D1_GW:-?}  NAS ${D1_IP:-?}"
-    ok "Detected  eth1 → ${D2_SUBNET:-?}  gw ${D2_GW:-?}  NAS ${D2_IP:-?}"
-    [[ -n "$PUBLIC_IP" ]] && ok "Public IP → $PUBLIC_IP"
+    ok "Detected  eth0 → ${LAN1_SUBNET:-?}  gw ${LAN1_GATEWAY:-?}  container ${LAN1_CONTAINER_IP:-?}"
+    ok "Detected  eth1 → ${LAN2_SUBNET:-?}  gw ${LAN2_GATEWAY:-?}  container ${LAN2_CONTAINER_IP:-?}"
+    [[ -n "$ZT_PUBLIC_ENDPOINT" ]] && ok "Public IP → $ZT_PUBLIC_ENDPOINT"
     echo
 
-    # Only required input — everything else uses detected defaults
-    ask "ZeroTier Network ID (from my.zerotier.com)" ZT_NETWORK_ID
-
-    # Confirm or override — press Enter to accept detected value
-    _confirm() {
-        local prompt="$1" default="$2" varname="$3" input
-        read -rp "    ${prompt} [${default}]: " input
-        printf -v "$varname" '%s' "${input:-$default}"
+    # Prompt only when auto-detection came back empty — fall back to manual entry.
+    _need() {
+        local prompt="$1" varname="$2"
+        [[ -n "${!varname}" ]] && return 0
+        local input
+        read -rp "    ${prompt}: " input
+        printf -v "$varname" '%s' "$input"
     }
 
-    echo "  Confirm network values (Enter = accept detected):"
-    _confirm "LAN 1 subnet"                                          "${D1_SUBNET}"  LAN1_SUBNET
-    _confirm "LAN 1 gateway"                                         "${D1_GW}"      LAN1_GATEWAY
-    _confirm "LAN 1 container IP"                                    "${D1_CIP}"     LAN1_CONTAINER_IP
-    _confirm "LAN 2 subnet"                                          "${D2_SUBNET}"  LAN2_SUBNET
-    _confirm "LAN 2 gateway"                                         "${D2_GW}"      LAN2_GATEWAY
-    _confirm "LAN 2 container IP"                                    "${D2_CIP}"     LAN2_CONTAINER_IP
-    _confirm "Public IP for moon endpoint (blank=skip, NOT hostname)" "${PUBLIC_IP}" ZT_PUBLIC_ENDPOINT
+    # The only always-required value — cannot be detected.
+    ask "ZeroTier Network ID (from my.zerotier.com)" ZT_NETWORK_ID
+
+    _need "LAN 1 subnet (e.g. 192.168.1.0/24)"        LAN1_SUBNET
+    _need "LAN 1 gateway (e.g. 192.168.1.1)"          LAN1_GATEWAY
+    _need "LAN 1 container IP (e.g. 192.168.1.253)"   LAN1_CONTAINER_IP
+    _need "LAN 2 subnet (e.g. 172.16.0.0/24)"         LAN2_SUBNET
+    _need "LAN 2 gateway (e.g. 172.16.0.1)"           LAN2_GATEWAY
+    _need "LAN 2 container IP (e.g. 172.16.0.253)"    LAN2_CONTAINER_IP
+    # ZT_PUBLIC_ENDPOINT is optional — leave blank if detection failed
 
     DATA_DIR="/volume1/docker/zerotier"
     CONTAINER_NAME="zerotier-moon"
