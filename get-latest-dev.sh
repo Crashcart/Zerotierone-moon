@@ -63,18 +63,30 @@ if [[ -d "$REPO_DIR/.git" ]]; then
     exit 0
 fi
 
-# ── Directory exists but is not a git repo ────────────────────────────────────
+# ── Directory exists but is not a git repo — migrate ─────────────────────────
 if [[ -d "$REPO_DIR" ]]; then
-    die "$REPO_DIR exists but is not a git repository.
-    Move or remove it first:  mv $REPO_DIR ${REPO_DIR}.bak
-    Then re-run this script."
+    warn "$REPO_DIR exists but is not a git repo — migrating old install"
+    # Preserve .env so install.sh skips interactive prompts
+    if [[ -f "$REPO_DIR/.env" ]]; then
+        cp "$REPO_DIR/.env" /tmp/zerotier-env.bak
+        ok ".env backed up to /tmp/zerotier-env.bak"
+    fi
+    mv "$REPO_DIR" "${REPO_DIR}.old"
+    ok "Old directory moved to ${REPO_DIR}.old"
 fi
 
 # ── Fresh install ─────────────────────────────────────────────────────────────
-step "No existing install — cloning $REPO_URL (branch: $REPO_BRANCH)"
+step "Cloning $REPO_URL (branch: $REPO_BRANCH)"
 mkdir -p "$(dirname "$REPO_DIR")"
 git clone --branch "$REPO_BRANCH" "$REPO_URL" "$REPO_DIR"
 ok "Cloned to $REPO_DIR"
+
+# Restore .env from migration so install.sh runs non-interactively
+if [[ -f /tmp/zerotier-env.bak ]]; then
+    cp /tmp/zerotier-env.bak "$REPO_DIR/.env"
+    rm /tmp/zerotier-env.bak
+    ok ".env restored — install.sh will run non-interactively"
+fi
 
 ENV_FILE="$REPO_DIR/.env"
 
