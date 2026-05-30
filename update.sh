@@ -95,12 +95,26 @@ DATA_DIR="${DATA_DIR:-/volume1/docker/zerotier}"
 CONTAINER_NAME="${CONTAINER_NAME:-zerotier-moon}"
 IMAGE_NAME="${IMAGE_NAME:-zerotier-moon}"
 
-# Validate all required networking variables are present
-_required=(LAN1_SUBNET LAN1_GATEWAY LAN1_CONTAINER_IP LAN2_SUBNET LAN2_GATEWAY LAN2_CONTAINER_IP)
+# Validate all required networking variables are present. Gateways are
+# intentionally NOT required — a same-L2 second NIC may legitimately have none,
+# and macvlan creation below omits --gateway when blank (matches install.sh).
+_required=(LAN1_SUBNET LAN1_CONTAINER_IP LAN2_SUBNET LAN2_CONTAINER_IP)
 for _v in "${_required[@]}"; do
     [[ -n "${!_v:-}" ]] || die ".env is missing required variable: $_v — re-run install.sh"
 done
 unset _required _v
+
+# Sanitize gateway values — a stale .env may hold an interface name instead of
+# an IP (older buggy detection). If it is not a valid IPv4, blank it so macvlan
+# omits --gateway rather than passing a value Docker rejects.
+_is_ipv4() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
+for _gw in LAN1_GATEWAY LAN2_GATEWAY; do
+    if [[ -n "${!_gw:-}" ]] && ! _is_ipv4 "${!_gw}"; then
+        warn "$_gw='${!_gw}' is not a valid IP — ignoring (macvlan will omit --gateway)"
+        printf -v "$_gw" '%s' ""
+    fi
+done
+unset _gw
 
 # ─── Status only ──────────────────────────────────────────────────────────────
 if $STATUS_ONLY; then
@@ -188,9 +202,12 @@ fi
 # ─── Recreate macvlan networks if missing ─────────────────────────────────────
 step "Checking macvlan networks"
 
-# Detect interfaces from .env
-LAN1_IF=$(ip route | awk "/$(echo "$LAN1_SUBNET" | sed 's|/.*||' | awk -F. '{print $1"."$2}')/ {print \$3; exit}")
-LAN2_IF=$(ip route | awk "/$(echo "$LAN2_SUBNET" | sed 's|/.*||' | awk -F. '{print $1"."$2}')/ {print \$3; exit}")
+# Derive interface names by exact scope-link subnet match (field 3 is the dev).
+# The old two-octet prefix-match awk could grab the default route's gateway IP
+# instead of the interface name — this matches install.sh's robust approach.
+_iface_for() { ip -o route show scope link 2>/dev/null | awk -v s="$1" '$1==s{print $3; exit}'; }
+LAN1_IF=$(_iface_for "$LAN1_SUBNET")
+LAN2_IF=$(_iface_for "$LAN2_SUBNET")
 LAN1_IF="${LAN1_IF:-eth0}"
 LAN2_IF="${LAN2_IF:-eth1}"
 
@@ -200,14 +217,18 @@ recreate_macvlan() {
         ok "Network $name exists"
     else
         warn "Network $name missing (lost on reboot?) — recreating"
+        # --gateway only when known; Docker defaults to the subnet's .1 otherwise
+        # (cosmetic — the container routes via setuproutes.sh policy tables).
+        local gw_arg=()
+        [[ -n "$gateway" ]] && gw_arg=(--gateway "$gateway")
         docker network create \
             --driver macvlan \
             --subnet "$subnet" \
-            --gateway "$gateway" \
+            "${gw_arg[@]}" \
             --ip-range "${container_ip}/30" \
             -o parent="$parent" \
             "$name"
-        ok "Recreated $name (parent=$parent, ip-range=${container_ip}/30)"
+        ok "Recreated $name (parent=$parent, gw=${gateway:-auto}, ip-range=${container_ip}/30)"
     fi
 }
 
