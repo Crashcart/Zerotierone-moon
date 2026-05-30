@@ -41,6 +41,23 @@ ok "docker $(docker --version | awk '{print $3}' | tr -d ',')"
 if [[ -d "$REPO_DIR/.git" ]]; then
     step "Existing repo found at $REPO_DIR"
 
+    # Back up settings before any git operations — .env is gitignored so it is
+    # never touched by checkout/pull, but a timestamped copy guarantees the
+    # user's saved settings survive no matter what.
+    if [[ -f "$REPO_DIR/.env" ]]; then
+        mkdir -p "$REPO_DIR/.env-backups"
+        cp "$REPO_DIR/.env" "$REPO_DIR/.env-backups/.env.$(date +%Y%m%d-%H%M%S)"
+        ok "Settings backed up to $REPO_DIR/.env-backups/"
+        # Keep the 10 most recent backups. Timestamped names sort oldest→newest
+        # under a glob, so delete everything except the final 10.
+        backups=("$REPO_DIR/.env-backups"/.env.*)
+        if (( ${#backups[@]} > 10 )); then
+            for ((bi = 0; bi < ${#backups[@]} - 10; bi++)); do
+                rm -f "${backups[$bi]}"
+            done
+        fi
+    fi
+
     # Pull latest dev first so update.sh itself is current
     git -C "$REPO_DIR" fetch origin "$REPO_BRANCH" --quiet \
         || warn "git fetch failed — proceeding with local copy"
