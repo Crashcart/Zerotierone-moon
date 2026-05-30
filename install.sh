@@ -72,6 +72,21 @@ if [[ -f "$ENV_FILE" ]]; then
     }
     _sanitize_gw LAN1_GATEWAY LAN1_SUBNET eth0
     _sanitize_gw LAN2_GATEWAY LAN2_SUBNET eth1
+
+    # ─── TEMPORARY HARDCODE — REMOVE ─────────────────────────────────────────
+    # eth1's gateway is not auto-detectable on DSM (single system default route).
+    # If sanitizing left LAN2_GATEWAY blank on the 192.168.1.0/24 subnet, apply
+    # the known gateway and persist it to .env so it survives future runs.
+    # TODO(remove): proper per-NIC gateway detection. See
+    # plans/active/zerotier-moon-maintenance.md.
+    if [[ -z "${LAN2_GATEWAY:-}" && "${LAN2_SUBNET:-}" == 192.168.1.0/24 ]]; then
+        LAN2_GATEWAY="192.168.1.1"
+        warn "TEMP: hardcoded LAN2_GATEWAY=192.168.1.1 (eth1 gw not auto-detectable)"
+        _t=$(mktemp)
+        sed "s|^LAN2_GATEWAY=.*|LAN2_GATEWAY=192.168.1.1|" "$ENV_FILE" > "$_t" && mv "$_t" "$ENV_FILE"
+        ok "LAN2_GATEWAY persisted to .env"
+    fi
+    # ─────────────────────────────────────────────────────────────────────────
 else
     # ── Auto-detect network config from ip route / ip addr ────────────────────
     _if_subnet()  { ip route show dev "$1" proto kernel 2>/dev/null | awk 'NR==1{print $1}'; }
