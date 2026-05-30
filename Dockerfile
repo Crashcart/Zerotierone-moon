@@ -1,6 +1,8 @@
-# Alpine 3.21 ships zerotier-one 1.14.x+ which is past the Synology listnetworks bug.
-# Switching from 3.19 ensures we get a post-1.14.0 package with key fixes.
-FROM alpine:3.21
+# zerotier-one was dropped from Alpine's community repo after v3.17 — it is NOT
+# in 3.18/3.19/3.20/3.21. v3.17 community ships zerotier-one 1.10.2-r0, which
+# predates the 1.14.0 listnetworks regression (issue #2324) and is a stable,
+# proven root/moon build. Pinned here so `apk add zerotier-one` resolves.
+FROM alpine:3.17
 
 # Install ZeroTier and networking tools
 RUN apk add --no-cache \

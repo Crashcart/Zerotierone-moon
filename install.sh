@@ -51,7 +51,9 @@ if [[ -f "$ENV_FILE" ]]; then
 else
     # ── Auto-detect network config from ip route / ip addr ────────────────────
     _if_subnet()  { ip route show dev "$1" proto kernel 2>/dev/null | awk 'NR==1{print $1}'; }
-    _if_gateway() { ip route show default 2>/dev/null | awk "/dev $1/ {print \$3}" | head -1; }
+    # Gateway: only the address after "via" on this interface's default route.
+    # A bare "default dev ethX" (no via) yields nothing — gateway stays empty.
+    _if_gateway() { ip -o route show default 2>/dev/null | awk -v d="$1" 'index($0,"dev "d){for(i=1;i<=NF;i++)if($i=="via"){print $(i+1);exit}}'; }
     _if_ip()      { ip addr show "$1" 2>/dev/null | awk '/inet /{sub("/.*","",$2); print $2}' | head -1; }
 
     D1_SUBNET=$(_if_subnet eth0);  D1_GW=$(_if_gateway eth0);  D1_IP=$(_if_ip eth0)
@@ -103,13 +105,14 @@ else
     # Only prompt if no prior install was found — otherwise fully auto.
     [[ -z "$ZT_NETWORK_ID" ]] && ask "ZeroTier Network ID (from my.zerotier.com)" ZT_NETWORK_ID
 
+    # Subnet + container IP are required (macvlan needs them); gateways are
+    # optional — a second NIC serving same-L2 clients often has no gateway,
+    # and setuproutes.sh tolerates an empty one.
     _need "LAN 1 subnet (e.g. 192.168.1.0/24)"        LAN1_SUBNET
-    _need "LAN 1 gateway (e.g. 192.168.1.1)"          LAN1_GATEWAY
     _need "LAN 1 container IP (e.g. 192.168.1.253)"   LAN1_CONTAINER_IP
     _need "LAN 2 subnet (e.g. 172.16.0.0/24)"         LAN2_SUBNET
-    _need "LAN 2 gateway (e.g. 172.16.0.1)"           LAN2_GATEWAY
     _need "LAN 2 container IP (e.g. 172.16.0.253)"    LAN2_CONTAINER_IP
-    # ZT_PUBLIC_ENDPOINT is optional — leave blank if detection failed
+    # LAN gateways and ZT_PUBLIC_ENDPOINT stay as detected (may be blank)
 
     DATA_DIR="/volume1/docker/zerotier"
     CONTAINER_NAME="zerotier-moon"
@@ -137,20 +140,23 @@ fi
 [[ -n "${ZT_NETWORK_ID:-}"       ]] || die "ZT_NETWORK_ID is not set"
 [[ "${ZT_NETWORK_ID}" =~ ^[0-9a-fA-F]{16}$ ]] || die "ZT_NETWORK_ID must be exactly 16 hex characters (got: ${ZT_NETWORK_ID})"
 [[ -n "${LAN1_SUBNET:-}"         ]] || die "LAN1_SUBNET is not set"
-[[ -n "${LAN1_GATEWAY:-}"        ]] || die "LAN1_GATEWAY is not set"
 [[ -n "${LAN1_CONTAINER_IP:-}"   ]] || die "LAN1_CONTAINER_IP is not set"
 [[ -n "${LAN2_SUBNET:-}"         ]] || die "LAN2_SUBNET is not set"
-[[ -n "${LAN2_GATEWAY:-}"        ]] || die "LAN2_GATEWAY is not set"
 [[ -n "${LAN2_CONTAINER_IP:-}"   ]] || die "LAN2_CONTAINER_IP is not set"
+# LAN gateways are optional — only used for per-table default routes in
+# setuproutes.sh; a same-L2 second NIC may legitimately have none.
 
 DATA_DIR="${DATA_DIR:-/volume1/docker/zerotier}"
 CONTAINER_NAME="${CONTAINER_NAME:-zerotier-moon}"
 IMAGE_NAME="${IMAGE_NAME:-zerotier-moon}"
 
 # ─── Derive interface names from subnets ──────────────────────────────────────
-# Detect the host interface that owns the LAN1/LAN2 gateway IP
-LAN1_IF=$(ip route | awk "/$(echo "$LAN1_SUBNET" | sed 's|/.*||' | awk -F. '{print $1"."$2}')/ {print \$3; exit}")
-LAN2_IF=$(ip route | awk "/$(echo "$LAN2_SUBNET" | sed 's|/.*||' | awk -F. '{print $1"."$2}')/ {print \$3; exit}")
+# Match the kernel scope-link route whose destination equals the subnet and
+# return its device name (field 3). This is exact — the old prefix-match on
+# "192.168" wrongly grabbed the default route's gateway IP as the interface.
+_iface_for() { ip -o route show scope link 2>/dev/null | awk -v s="$1" '$1==s{print $3; exit}'; }
+LAN1_IF=$(_iface_for "$LAN1_SUBNET")
+LAN2_IF=$(_iface_for "$LAN2_SUBNET")
 
 # Fall back to eth0/eth1 if detection fails
 LAN1_IF="${LAN1_IF:-eth0}"
@@ -365,14 +371,18 @@ create_macvlan() {
         # Scope Docker's IP allocator to a /30 anchored at the container IP.
         # This prevents Docker from handing out IPs to other containers that
         # would conflict with real hosts on the LAN.
+        # --gateway only when known; Docker defaults to the subnet's .1 otherwise
+        # (cosmetic for us — the container routes via setuproutes.sh policy tables).
+        local gw_arg=()
+        [[ -n "$gateway" ]] && gw_arg=(--gateway "$gateway")
         docker network create \
             --driver macvlan \
             --subnet "$subnet" \
-            --gateway "$gateway" \
+            "${gw_arg[@]}" \
             --ip-range "${container_ip}/30" \
             -o parent="$parent" \
             "$name"
-        ok "Created $name (parent=$parent, $subnet, ip-range=${container_ip}/30)"
+        ok "Created $name (parent=$parent, $subnet, gw=${gateway:-auto}, ip-range=${container_ip}/30)"
     fi
 }
 
