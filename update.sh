@@ -245,7 +245,11 @@ generate_compose
 step "Restarting container"
 
 # Graceful stop first — gives ZeroTier 15s to flush state cleanly
-docker stop --time=15 "$CONTAINER_NAME" 2>/dev/null && ok "Container stopped gracefully" || warn "Container was not running"
+if docker stop --time=15 "$CONTAINER_NAME" 2>/dev/null; then
+    ok "Container stopped gracefully"
+else
+    warn "Container was not running"
+fi
 # Belt-and-suspenders: clear stale PID file so zerotier-one can bind port 9993
 rm -f "$DATA_DIR/zerotier-one/zerotier-one.pid"
 
