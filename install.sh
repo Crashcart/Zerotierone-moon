@@ -44,10 +44,34 @@ fi
 # ─── Load or create .env ──────────────────────────────────────────────────────
 step "Configuration"
 
+_is_ipv4() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
+
 if [[ -f "$ENV_FILE" ]]; then
     # shellcheck source=/dev/null
     source "$ENV_FILE"
     ok "Loaded config from .env"
+
+    # Sanitize gateway values — a stale .env may contain an interface name
+    # instead of an IP (from an older run with broken detection). Re-detect
+    # from live routing table and patch .env in place so subsequent runs are clean.
+    _if_gateway() { ip -o route show default 2>/dev/null | awk -v d="$1" 'index($0,"dev "d){for(i=1;i<=NF;i++)if($i=="via"){print $(i+1);exit}}'; }
+    _iface_for()  { ip -o route show scope link 2>/dev/null | awk -v s="$1" '$1==s{print $3; exit}'; }
+    _sanitize_gw() {
+        local varname="$1" val="${!1:-}"
+        [[ -z "$val" ]] && return 0           # already blank — nothing to do
+        _is_ipv4 "$val" && return 0           # looks like an IP — keep it
+        local iface detected
+        iface=$(_iface_for "${!2:-}")         # derive interface from subnet var
+        iface="${iface:-$3}"                  # fall back to eth0/eth1
+        detected=$(_if_gateway "$iface")
+        warn "$varname='$val' is not a valid IP — re-detected: ${detected:-<none>}"
+        printf -v "$varname" '%s' "$detected"
+        local tmp; tmp=$(mktemp)
+        sed "s|^${varname}=.*|${varname}=${detected}|" "$ENV_FILE" > "$tmp" && mv "$tmp" "$ENV_FILE"
+        [[ -n "$detected" ]] && ok "$varname updated to $detected in .env"
+    }
+    _sanitize_gw LAN1_GATEWAY LAN1_SUBNET eth0
+    _sanitize_gw LAN2_GATEWAY LAN2_SUBNET eth1
 else
     # ── Auto-detect network config from ip route / ip addr ────────────────────
     _if_subnet()  { ip route show dev "$1" proto kernel 2>/dev/null | awk 'NR==1{print $1}'; }
