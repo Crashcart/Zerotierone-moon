@@ -18,10 +18,13 @@ services:
       - NET_ADMIN
       - NET_RAW
       - SYS_ADMIN
+    # Only network-namespaced sysctls belong here. net.core.* (rmem_max,
+    # wmem_max, netdev_max_backlog) are HOST-global on the DSM kernel — runc
+    # cannot set them in the container netns and aborts container init with
+    # "open /proc/sys/net/core/wmem_max: no such file or directory". They are
+    # applied on the host by install.sh (/etc/sysctl.conf) instead. The
+    # net.ipv4.udp_* values below ARE namespaced and safe to set per-container.
     sysctls:
-      net.core.rmem_max: 8388608
-      net.core.wmem_max: 8388608
-      net.core.netdev_max_backlog: 5000
       net.ipv4.udp_rmem_min: 8192
       net.ipv4.udp_wmem_min: 8192
     healthcheck:
