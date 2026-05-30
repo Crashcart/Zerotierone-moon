@@ -68,6 +68,15 @@ if [[ -d "$REPO_DIR/.git" ]]; then
         || warn "git pull failed — proceeding with local copy"
     ok "Repo updated to $REPO_BRANCH ($(git -C "$REPO_DIR" rev-parse --short HEAD))"
 
+    # The body executing now came from curl and may be a stale cached copy
+    # (raw.githubusercontent caches for minutes). Hand off to the freshly
+    # pulled local script so the newest logic always runs. The guard var
+    # prevents an infinite re-exec loop.
+    if [[ -z "${GLD_REEXEC:-}" ]]; then
+        export GLD_REEXEC=1
+        exec bash "$REPO_DIR/get-latest-dev.sh" "$@"
+    fi
+
     if [[ ! -x /usr/local/bin/zmoon ]]; then
         warn "zmoon not in PATH — creating symlink"
         mkdir -p /usr/local/bin
