@@ -75,12 +75,22 @@ if [[ -d "$REPO_DIR/.git" ]]; then
         ok "zmoon → /usr/local/bin/zmoon"
     fi
 
-    # A git repo without .env was cloned but never installed — install, don't update.
+    # Decide update vs install by the real marker of a working install: the
+    # ZeroTier identity. A present .env only means config was written — an
+    # earlier install may have failed before the container ever started and
+    # generated identity.secret. update.sh refuses to run without it, so only
+    # take the update path when the identity actually exists.
+    ZT_DATA_DIR="/volume1/docker/zerotier"
     if [[ -f "$REPO_DIR/.env" ]]; then
+        _dd=$(grep -E '^DATA_DIR=' "$REPO_DIR/.env" | head -1 | cut -d= -f2- | tr -d '"')
+        [[ -n "$_dd" ]] && ZT_DATA_DIR="$_dd"
+    fi
+
+    if [[ -f "$REPO_DIR/.env" && -f "$ZT_DATA_DIR/zerotier-one/identity.secret" ]]; then
         step "Running update.sh"
         bash "$REPO_DIR/update.sh"
     else
-        warn "No .env yet — running first-time install"
+        warn "No working install yet (no identity) — running install.sh"
         bash "$REPO_DIR/install.sh"
     fi
     exit 0
