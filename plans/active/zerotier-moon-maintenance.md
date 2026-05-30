@@ -10,13 +10,14 @@ Keep the DS918+ ZeroTier moon node stack current, tested, and production-ready a
 No active sprint. Await user direction. On session start: sync AI-rules (v1.29.2 current), run `bash tests/run.sh` to confirm 55/55 pass, then proceed with user-directed work.
 
 ## TODO — Tech Debt
-- [ ] **Remove temporary LAN2_GATEWAY hardcode** in `install.sh`. DSM exposes only
-  one system default route (via eth0), so eth1's gateway (`192.168.1.1`) cannot be
-  auto-detected and is currently hardcoded as a fallback (guarded to the
-  `192.168.1.0/24` subnet, marked `TEMPORARY HARDCODE — REMOVE`). Replace with
-  proper per-NIC gateway detection (e.g. parse DSM `/etc/sysconfig/network-scripts/`
-  or policy-route tables) or an optional prompt when detection comes back blank.
-  Added 2026-05-30 per user request.
+- [x] **Removed temporary LAN2_GATEWAY hardcode** from `install.sh` (2026-05-30).
+  No site-specific network values live in the code. On first install the gateway
+  is auto-detected; if a NIC's gateway is not auto-detectable it stays blank
+  (macvlan omits `--gateway`, which is cosmetic) and the user can set it in `.env`.
+  Existing `.env` is authoritative and preserved across reinstalls.
+- [ ] **Optional future improvement**: per-NIC gateway detection for the second
+  NIC (DSM exposes only one system default route, via eth0), or an optional
+  prompt when detection returns blank — without storing any value in the repo.
 
 ## Context
 - Branch: `dev` — all work targets dev; promotions to alpha/beta/main require explicit human instruction
