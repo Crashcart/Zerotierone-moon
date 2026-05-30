@@ -92,6 +92,17 @@ else
     LAN2_SUBNET="$D2_SUBNET"; LAN2_GATEWAY="$D2_GW"; LAN2_CONTAINER_IP="$D2_CIP"
     ZT_PUBLIC_ENDPOINT="$PUBLIC_IP"
 
+    # ─── TEMPORARY HARDCODE — REMOVE ─────────────────────────────────────────
+    # DSM keeps only one system default route (via eth0), so eth1's gateway
+    # cannot be auto-detected from `ip route`. Hardcoded here so the second NIC
+    # routes off-subnet. TODO(remove): replace with proper per-NIC gateway
+    # detection or an optional prompt. See plans/active/zerotier-moon-maintenance.md.
+    if [[ -z "$LAN2_GATEWAY" && "$LAN2_SUBNET" == 192.168.1.0/24 ]]; then
+        LAN2_GATEWAY="192.168.1.1"
+        warn "TEMP: hardcoded LAN2_GATEWAY=192.168.1.1 (eth1 gw not auto-detectable)"
+    fi
+    # ─────────────────────────────────────────────────────────────────────────
+
     echo
     ok "Detected  eth0 → ${LAN1_SUBNET:-?}  gw ${LAN1_GATEWAY:-?}  container ${LAN1_CONTAINER_IP:-?}"
     ok "Detected  eth1 → ${LAN2_SUBNET:-?}  gw ${LAN2_GATEWAY:-?}  container ${LAN2_CONTAINER_IP:-?}"
