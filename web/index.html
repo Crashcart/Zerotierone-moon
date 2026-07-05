@@ -111,8 +111,12 @@
       </div>
 
       <div class="card">
-        <h2>Orbit this moon</h2>
-        <p class="muted">Run these on any device to make it use this moon as a root anchor.</p>
+        <h2>Connect this moon</h2>
+        <p class="muted">Run these on any device to join the network and use this moon as a root anchor.</p>
+        <div class="copyrow">
+          <code id="join-cmd">zerotier-cli join &lt;network-id&gt;</code>
+          <button class="btn" data-copy="#join-cmd">Copy</button>
+        </div>
         <div class="copyrow">
           <code id="orbit-cmd">zerotier-cli orbit &lt;moon-id&gt; &lt;moon-id&gt;</code>
           <button class="btn" data-copy="#orbit-cmd">Copy</button>

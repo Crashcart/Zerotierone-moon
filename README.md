@@ -408,6 +408,20 @@ Triggered Task → User-defined script:
 the values come from `lib/tuning.sh`, the same source the installer uses, so
 they never drift.
 
+**Prefer to script it instead of the GUI?** `zmoon install-cron` adds a
+tab-formatted entry to `/etc/crontab` that runs `zmoon boot` on a schedule
+(default every 15 min — idempotent and self-healing, also recovers tuning lost
+to a DSM update). `zmoon uninstall-cron` removes it. Run as root. DSM's `@reboot`
+is unreliable, so the periodic schedule is the robust CLI path; the GUI Boot-up
+task above is the zero-overhead event-driven alternative.
+
+### Connecting a client — populated commands
+
+`zmoon connect` prints the exact, ready-to-paste client commands for **this**
+moon, with the 10-char Moon ID and network ID already filled in (install → join
+→ orbit → verify, plus the Windows `.moon`-file path). The browser console's
+**Connect** tab shows the same, auto-filled from live status.
+
 If you hit issues after a reboot:
 
 1. Check the container started: Container Manager → Container → Status = Running

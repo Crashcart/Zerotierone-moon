@@ -193,6 +193,11 @@ assert_grep "install.sh sources shared tuning"           'source .*lib/tuning.sh
 assert_grep "install.sh has no inline sysctl value dup"  'HOST_SYSCTLS'        cat install.sh
 # shellcheck disable=SC2016  # expansion is intentional inside the bash -c subshell
 assert_ok   "lib/tuning.sh sources without error"        bash -c 'source lib/tuning.sh && [ ${#HOST_SYSCTLS[@]} -ge 5 ]'
+assert_grep "zmoon help lists 'connect'"                 'zmoon connect'       ./zmoon help
+assert_grep "zmoon help lists 'install-cron'"            'zmoon install-cron'  ./zmoon help
+assert_grep "zmoon derives 10-char world id (not padded)" 'moon_world_id'      cat zmoon
+assert_grep "connect uses moon_world_id for orbit"       'moon_world_id'       cat zmoon
+assert_grep "install-cron targets /etc/crontab"          '/etc/crontab'        cat zmoon
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

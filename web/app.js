@@ -131,9 +131,12 @@ function render(s) {
     ['Status', c.online ? 'connected' : 'not connected'],
   ].map(kvRow).join('');
 
-  // Connect commands — fill in the real moon id
+  // Connect commands — fill in the real moon id + network id
   if (moon.id) {
     $('#orbit-cmd').textContent = `zerotier-cli orbit ${moon.id} ${moon.id}`;
+  }
+  if (net.id) {
+    $('#join-cmd').textContent = `zerotier-cli join ${net.id}`;
   }
 
   // Footer

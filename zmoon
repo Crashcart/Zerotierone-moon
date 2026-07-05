@@ -11,11 +11,14 @@
 #   zmoon doctor                  Full automated diagnostics (PASS/WARN/FAIL)
 #   zmoon peers                   Parsed peer list (role, latency, path)
 #   zmoon moon-id                 Print Moon ID + client orbit command
+#   zmoon connect                 Full join instructions for this moon (populated)
 #   zmoon backup                  Back up moon identity (keeps last 5)
 #   zmoon restore <dir>           Restore moon identity from a backup
 #   zmoon logs [-f]               Show container logs
 #   zmoon web [--host H --port P] Serve the web console + update API
 #   zmoon boot                    Re-apply host tuning on reboot (DSM Boot-up task)
+#   zmoon install-cron [sched]    Auto re-apply tuning via DSM cron (default */15)
+#   zmoon uninstall-cron          Remove the zmoon cron entry
 #   zmoon autoupdate              Auto-update if AUTO_UPDATE=true in .env
 #   zmoon version                 Print zmoon + ZeroTier versions
 #   zmoon help                    Show this help
@@ -64,7 +67,8 @@ container_running() {
 
 zt() { docker exec "$CONTAINER_NAME" zerotier-cli "$@" 2>/dev/null; }
 
-# Print the Moon ID (basename without .moon) of the first moon file found.
+# Print the raw basename (without .moon) of the first moon file found — this is
+# the 16-char zero-padded world ID, e.g. 0000001be423ea4f.
 # Uses a bash glob rather than `ls` so odd filenames are handled safely.
 first_moon_id() {
     local f
@@ -78,9 +82,23 @@ first_moon_id() {
     return 1
 }
 
+# Print the 10-char world ID used by `zerotier-cli orbit` (NOT the 16-char
+# padded filename, which orbit rejects). Prefers the live daemon's own address;
+# falls back to the last 10 hex chars of the .moon filename.
+moon_world_id() {
+    local addr padded
+    addr="$(zt info 2>/dev/null | awk '{print $3}')"
+    if [[ "$addr" =~ ^[0-9a-f]{10}$ ]]; then
+        echo "$addr"; return 0
+    fi
+    padded="$(first_moon_id || true)"
+    [[ -n "$padded" ]] || return 1
+    echo "${padded: -10}"
+}
+
 # ─── help / version ──────────────────────────────────────────────────────────
 cmd_help() {
-    sed -n '3,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 cmd_version() {
@@ -162,12 +180,45 @@ cmd_peers() {
 cmd_moon_id() {
     load_env
     local moon_id
-    moon_id="$(first_moon_id || true)"
+    moon_id="$(moon_world_id || true)"
     [[ -n "$moon_id" ]] || die "no .moon file found — moon not yet generated"
     say "${BOLD}Moon ID:${NC} ${moon_id}"
     say ""
     say "On every client that should use this moon, run:"
     say "  ${G}zerotier-cli orbit ${moon_id} ${moon_id}${NC}"
+}
+
+# ─── connect — full, populated join instructions for THIS moon ───────────────
+cmd_connect() {
+    load_env
+    local moon_id net_id padded
+    moon_id="$(moon_world_id || true)"
+    [[ -n "$moon_id" ]] || die "no .moon file found — start the container so the moon generates its identity first"
+    net_id="${ZT_NETWORK_ID:-}"
+    padded="$(first_moon_id || true)"
+
+    hdr "Connect a device to this moon"
+    say ""
+    say "${BOLD}Linux / macOS${NC} — run on the client:"
+    say "  ${G}curl -s https://install.zerotier.com | sudo bash${NC}"
+    if [[ -n "$net_id" ]]; then
+        say "  ${G}sudo zerotier-cli join ${net_id}${NC}"
+    else
+        say "  ${G}sudo zerotier-cli join <network-id>${NC}   ${DIM}# ZT_NETWORK_ID not set in .env${NC}"
+    fi
+    say "  ${G}sudo zerotier-cli orbit ${moon_id} ${moon_id}${NC}"
+    say "  ${G}sudo zerotier-cli listpeers | grep ${moon_id}${NC}   ${DIM}# expect a MOON line with a real latency${NC}"
+    say ""
+    say "${BOLD}Windows${NC}:"
+    say "  1. Install ZeroTier One (MSI from zerotier.com); join ${net_id:-<network-id>} from the tray app."
+    say "  2. Copy this file into ${BOLD}C:\\ProgramData\\ZeroTier\\One\\moons.d\\${NC} :"
+    say "     ${DIM}${DATA_DIR}/zerotier-one/moons.d/${padded}.moon${NC}"
+    say "  3. Restart the ZeroTier One service."
+    if [[ -n "$net_id" ]]; then
+        say ""
+        say "This moon runs its own controller — after the client joins, ${BOLD}authorize${NC} it"
+        say "in the web console (${G}zmoon web${NC} → Members → toggle Authorized)."
+    fi
 }
 
 # ─── backup / restore ────────────────────────────────────────────────────────
@@ -440,6 +491,10 @@ cmd_boot() {
     source "$SCRIPT_DIR/lib/tuning.sh"
     local log_file="$DATA_DIR/boot.log"
     mkdir -p "$DATA_DIR"
+    # Rotate at 1 MB so a frequent cron schedule can't grow the log unbounded
+    if [[ -f "$log_file" ]] && [[ $(stat -c%s "$log_file" 2>/dev/null || echo 0) -gt 1048576 ]]; then
+        mv "$log_file" "${log_file}.1"
+    fi
     _blog() { echo "$(date '+%Y-%m-%d %H:%M:%S') [boot] $*" | tee -a "$log_file"; }
 
     local if1 if2
@@ -458,6 +513,52 @@ cmd_boot() {
         fi
     fi
     _blog "boot tasks complete"
+}
+
+# ─── install-cron / uninstall-cron — persist tuning via DSM's cron ───────────
+# DSM /etc/crontab format is TAB-separated: m<TAB>h<TAB>dom<TAB>mon<TAB>dow<TAB>user<TAB>command.
+# Spaces between columns make DSM silently drop the line, so we build with tabs.
+CRON_TAG="# zmoon-boot (host tuning re-apply — do not edit this block by hand)"
+
+_reload_crond() {
+    systemctl restart crond 2>/dev/null && return 0
+    synoservice --restart crond 2>/dev/null && return 0
+    synoservicectl --restart crond 2>/dev/null && return 0
+    return 1
+}
+
+cmd_install_cron() {
+    [[ "$(id -u)" -eq 0 ]] || die "run as root (sudo -i) — editing /etc/crontab needs root"
+    load_env
+    local schedule="${1:-*/15 * * * *}" crontab="/etc/crontab" self
+    self="$(command -v zmoon 2>/dev/null || echo "$SCRIPT_DIR/zmoon")"
+    [[ -f "$crontab" ]] || die "$crontab not found — is this a DSM host?"
+
+    if grep -qF "$CRON_TAG" "$crontab"; then
+        ok "cron entry already present in $crontab — nothing to do"
+    else
+        local m h dom mon dow line
+        read -r m h dom mon dow <<< "$schedule"
+        [[ -n "$dow" ]] || die "schedule must be 5 fields, e.g. '*/15 * * * *'"
+        line="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' "$m" "$h" "$dom" "$mon" "$dow" root "$self boot")"
+        printf '%s\n%s\n' "$CRON_TAG" "$line" >> "$crontab"
+        ok "Added to $crontab: '$schedule' → $self boot (root)"
+    fi
+    if _reload_crond; then ok "crond reloaded"; else warn "reload crond manually or reboot to activate"; fi
+    say ""
+    say "Event-driven alternative (runs once, only on boot — no periodic overhead):"
+    say "  DSM Task Scheduler → Triggered Task → ${BOLD}Boot-up${NC} (user root): ${G}zmoon boot${NC}"
+}
+
+cmd_uninstall_cron() {
+    [[ "$(id -u)" -eq 0 ]] || die "run as root (sudo -i)"
+    local crontab="/etc/crontab" tmp
+    grep -qF "$CRON_TAG" "$crontab" 2>/dev/null || { ok "no zmoon cron entry present"; return 0; }
+    tmp="$(mktemp)"
+    grep -vF "$CRON_TAG" "$crontab" | grep -v 'zmoon boot' > "$tmp" && cat "$tmp" > "$crontab"
+    rm -f "$tmp"
+    _reload_crond >/dev/null 2>&1 || true
+    ok "Removed zmoon cron entry from $crontab"
 }
 
 # ─── web console ─────────────────────────────────────────────────────────────
@@ -491,11 +592,14 @@ main() {
         doctor|diagnose)    cmd_doctor "$@" ;;
         peers)              cmd_peers "$@" ;;
         moon-id|moonid)     cmd_moon_id "$@" ;;
+        connect)            cmd_connect "$@" ;;
         backup)             cmd_backup "$@" ;;
         restore)            cmd_restore "$@" ;;
         logs)               cmd_logs "$@" ;;
         web)                cmd_web "$@" ;;
         boot)               cmd_boot "$@" ;;
+        install-cron)       cmd_install_cron "$@" ;;
+        uninstall-cron)     cmd_uninstall_cron "$@" ;;
         autoupdate)         cmd_autoupdate "$@" ;;
         version|--version|-v) cmd_version ;;
         help|--help|-h)     cmd_help ;;
