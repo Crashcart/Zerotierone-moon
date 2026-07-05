@@ -91,6 +91,7 @@ def start_update(branch):
         _job["proc"] = subprocess.Popen(
             cmd, cwd=REPO_DIR, stdout=logf, stderr=subprocess.STDOUT,
         )
+        logf.close()   # child holds its own copy; keeping ours leaks one fd per update
         _job["started"] = time.time()
         return True, "started"
 
@@ -109,32 +110,67 @@ def run(cmd, timeout=8):
     except Exception:
         return ""
 
-def zt_json(*args):
-    raw = run(["docker", "exec", CONTAINER, "zerotier-cli", "-j", *args])
-    try:
-        return json.loads(raw) if raw else None
-    except Exception:
-        return None
+def zt_info_and_peers():
+    """info + listpeers in ONE docker exec — each exec costs 100-300ms on the NAS."""
+    raw = run(["docker", "exec", CONTAINER, "sh", "-c",
+               "zerotier-cli -j info; echo '---ZT-SEP---'; zerotier-cli -j listpeers"])
+    info, peers = {}, []
+    if raw and "---ZT-SEP---" in raw:
+        a, _, b = raw.partition("---ZT-SEP---")
+        try:
+            info = json.loads(a) or {}
+        except Exception:
+            info = {}
+        try:
+            peers = json.loads(b) or []
+        except Exception:
+            peers = []
+    return info, peers
 
 def first_moon_id():
     for f in sorted(glob.glob(os.path.join(DATA_DIR, "zerotier-one", "moons.d", "*.moon"))):
         return os.path.basename(f)[:-5]
     return ""
 
-def controller_get(path):
-    """GET the container's local controller API using its own auth token."""
-    raw = run([
-        "docker", "exec", CONTAINER, "sh", "-c",
-        f'curl -s -H "X-ZT1-Auth: $(cat /var/lib/zerotier-one/authtoken.secret)" '
-        f'http://localhost:9993{path}',
-    ])
-    try:
-        return json.loads(raw) if raw else None
-    except Exception:
-        return None
+# NETWORK_ID is interpolated into in-container shell commands. It comes from our
+# own .env, but validating it keeps the string inert no matter what ends up there.
+NETWORK_ID_RE = re.compile(r"^[0-9a-fA-F]{16}$")
 
-def build_status(client_ip):
-    info = zt_json("info") or {}
+def controller_network_and_members():
+    """Network object + EVERY member detail in ONE docker exec.
+
+    The naive version (one exec per member) cost 3+N execs per status call —
+    measured 24 execs / 3.1s for 20 members. The container ships jq, so we walk
+    the member list inside a single exec: first line is the network JSON, each
+    following line is one member JSON tagged with its address.
+    """
+    if not NETWORK_ID_RE.match(NETWORK_ID):
+        return None, {}
+    script = (
+        'TOK=$(cat /var/lib/zerotier-one/authtoken.secret); '
+        f'BASE=http://localhost:9993/controller/network/{NETWORK_ID}; '
+        'curl -s -H "X-ZT1-Auth: $TOK" "$BASE"; echo; '
+        'for a in $(curl -s -H "X-ZT1-Auth: $TOK" "$BASE/member" | jq -r "keys[]" | head -200); do '
+        '  curl -s -H "X-ZT1-Auth: $TOK" "$BASE/member/$a" | jq -c --arg a "$a" ". + {address: \\$a}"; '
+        'done')
+    raw = run(["docker", "exec", CONTAINER, "sh", "-c", script], timeout=20)
+    if not raw:
+        return None, {}
+    lines = [ln for ln in raw.splitlines() if ln.strip()]
+    net, members = None, {}
+    for i, ln in enumerate(lines):
+        try:
+            obj = json.loads(ln)
+        except Exception:
+            continue
+        if i == 0 and isinstance(obj, dict) and "address" not in obj:
+            net = obj
+        elif isinstance(obj, dict) and obj.get("address"):
+            members[obj["address"]] = obj
+    return net, members
+
+def build_status():
+    info, raw_peers = zt_info_and_peers()
     moon_id = first_moon_id()
     online = bool(info.get("online"))
     status = {
@@ -155,7 +191,6 @@ def build_status(client_ip):
         "peers": [],
         "network": {"id": NETWORK_ID, "name": "", "ipPool": "", "routes": []},
         "members": [],
-        "client": {"address": "", "ip": client_ip, "online": None, "orbitedMoon": None},
     }
 
     for n in ("1", "2"):
@@ -166,7 +201,7 @@ def build_status(client_ip):
                 {"name": f"eth{int(n)-1}", "ip": ip, "subnet": sub,
                  "gateway": ENV.get(f"LAN{n}_GATEWAY", ""), "up": online})
 
-    for p in (zt_json("listpeers") or []):
+    for p in raw_peers:
         paths = [{"address": x.get("address", ""), "active": bool(x.get("active"))}
                  for x in p.get("paths", [])]
         status["peers"].append({
@@ -176,7 +211,7 @@ def build_status(client_ip):
         })
 
     if NETWORK_ID:
-        net = controller_get(f"/controller/network/{NETWORK_ID}")
+        net, members = controller_network_and_members()
         if net:
             status["network"]["name"] = net.get("name", "")
             pools = net.get("ipAssignmentPools", [])
@@ -184,26 +219,52 @@ def build_status(client_ip):
                 status["network"]["ipPool"] = f"{pools[0].get('ipRangeStart','')}–{pools[0].get('ipRangeEnd','')}"
             status["network"]["routes"] = [
                 {"target": r.get("target", ""), "via": r.get("via")} for r in net.get("routes", [])]
-        ids = controller_get(f"/controller/network/{NETWORK_ID}/member") or {}
-        for addr in list(ids)[:200]:
-            m = controller_get(f"/controller/network/{NETWORK_ID}/member/{addr}") or {}
+        for addr, m in members.items():
             status["members"].append({
                 "address": addr, "name": m.get("name", ""),
                 "authorized": bool(m.get("authorized")),
                 "ipAssignments": m.get("ipAssignments", []),
                 "online": None, "lastSeenSeconds": None,
             })
-            if client_ip and client_ip in m.get("ipAssignments", []):
-                status["client"].update({"address": addr, "online": True,
-                                         "orbitedMoon": bool(moon_id)})
     return status
 
+# ── status cache — single-flight with a short TTL ────────────────────────────
+# One browser tab polling plus a couple of extra tabs must not multiply docker
+# execs: everything within the TTL is served from cache, and concurrent misses
+# collapse into ONE refresh (the lock makes followers wait, then hit the cache).
+STATUS_TTL = 3.0
+_status_cache = {"at": 0.0, "data": None}
+_status_lock = threading.Lock()
+
+def cached_status():
+    now = time.monotonic()
+    if _status_cache["data"] is not None and now - _status_cache["at"] < STATUS_TTL:
+        return _status_cache["data"]
+    with _status_lock:
+        now = time.monotonic()   # re-check: another thread may have refreshed while we waited
+        if _status_cache["data"] is not None and now - _status_cache["at"] < STATUS_TTL:
+            return _status_cache["data"]
+        data = build_status()
+        _status_cache["data"] = data
+        _status_cache["at"] = time.monotonic()
+        return data
+
 def status_payload(client_ip):
-    """Live status if the moon answers; otherwise the committed sample."""
+    """Live status if the moon answers; otherwise the committed sample.
+    The heavy moon/controller data is cached; only the cheap per-request
+    client section is computed here."""
     try:
-        s = build_status(client_ip)
+        s = cached_status()
         if s["moon"]["id"] or s["peers"]:
-            return s
+            out = dict(s)
+            client = {"address": "", "ip": client_ip, "online": None, "orbitedMoon": None}
+            for m in s.get("members", []):
+                if client_ip and client_ip in m.get("ipAssignments", []):
+                    client.update({"address": m["address"], "online": True,
+                                   "orbitedMoon": bool(s["moon"]["id"])})
+                    break
+            out["client"] = client
+            return out
     except Exception:
         pass
     try:
@@ -321,11 +382,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200 if started else 409, {"started": started, "message": msg, "branch": branch})
 
         if path == "/api/actions/restart":
-            return self._send(200, {"ok": restart_container()})
+            ok = restart_container()
+            _status_cache["at"] = 0.0   # next status read reflects the restart
+            return self._send(200, {"ok": ok})
 
         m = re.match(r"^/api/members/([0-9a-fA-F]{10})/authorize$", path)
         if m:
             ok = set_member_authorized(m.group(1), bool(body.get("authorized")))
+            if ok:
+                _status_cache["at"] = 0.0   # don't serve pre-toggle member state
             return self._send(200 if ok else 502, {"ok": ok})
 
         return self._send(404, {"error": "not found"})

@@ -201,6 +201,14 @@ assert_grep "install-cron targets /etc/crontab"          '/etc/crontab'        c
 assert_grep "zmoon hardens PATH for DSM cron (minimal env)" 'export PATH=.*local/bin' cat zmoon
 assert_grep "cron reload tries DSM-native synosystemctl"  'synosystemctl'       cat zmoon
 
+# ─── Web perf (stress-test regression guards, 2026-07-05) ────────────────────
+# One docker exec per member cost 24 execs / 3.1s per status call; the bulk
+# fetch + single-flight cache brought it to 2 execs / 0.3s. Guard the shape.
+assert_grep "status uses bulk controller fetch (no N+1)"  'controller_network_and_members' cat web/server.py
+assert_grep "info+peers combined into one docker exec"    'zt_info_and_peers'   cat web/server.py
+assert_grep "status responses served from TTL cache"      'STATUS_TTL'          cat web/server.py
+assert_grep "network id validated before shell interpolation" 'NETWORK_ID_RE'   cat web/server.py
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo -e "${DIM}─────────────────────────────────────────────${NC}"
