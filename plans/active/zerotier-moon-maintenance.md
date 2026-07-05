@@ -21,6 +21,18 @@ the live NAS — `/api/status` against a running moon (currently only the sample
 fallback is exercised) and a real web-triggered update. Not internet-exposed.
 On session start: run `bash tests/run.sh`, then proceed with user-directed work.
 
+## Stress test — SRE + TECH LEAD scrutiny (2026-07-05)
+Joint slowdown/stability pass over the stack. Container config had no new
+findings (prior tuning table stands). The web layer had one HIGH finding,
+measured with a docker-shim stress harness (120ms/exec, 20 members):
+`/api/status` spawned **24 docker execs / 3.1s per call** (one exec per member)
+from an unauthenticated endpoint — ten viewers ≈ 240-exec stampede against
+dockerd. Fixed by BACKEND DEVELOPER: bulk in-container jq walk (1 exec),
+info+listpeers combined (1 exec), 3s single-flight TTL cache, cache
+invalidation on writes, NETWORK_ID regex before shell interpolation, update-log
+fd leak closed. After: **0.31s/2 execs cold; 0 execs warm; 2 execs for 10
+cold-concurrent**. Security gates re-verified (401/415/404). 80 tests.
+
 ## Speed & Stability (user priority — 2026-07-05)
 Audited the moon stack for throughput/latency and uptime/reboot-survival.
 Container side already solid (restart:always, healthcheck, process-death detect,
