@@ -60,7 +60,9 @@ NETWORK_ID = ENV.get("ZT_NETWORK_ID", "")
 UPDATE_BRANCH = ENV.get("AUTO_UPDATE_BRANCH", "dev")
 ADMIN_PASSWORD = os.environ.get("WEB_ADMIN_PASSWORD", ENV.get("WEB_ADMIN_PASSWORD", ""))
 
-BRANCH_RE = re.compile(r"^[\w./-]{1,100}$")
+# Branch names: word chars, dots, slashes, dashes — but not a leading dash
+# (would be read as a git flag) and no ".." path segments.
+BRANCH_RE = re.compile(r"^(?!-)(?!.*\.\.)[\w./-]{1,100}$")
 
 # ── update job (single background job, log streamed to a file) ───────────────
 LOG_PATH = os.path.join(DATA_DIR, "webupdate.log")
@@ -277,7 +279,8 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_static(self):
         rel = self.path.split("?")[0].lstrip("/") or "index.html"
         full = os.path.normpath(os.path.join(WEB_DIR, rel))
-        if not full.startswith(WEB_DIR) or not os.path.isfile(full):
+        # Confine to WEB_DIR — the separator stops a sibling like web-notes/ passing.
+        if (full != WEB_DIR and not full.startswith(WEB_DIR + os.sep)) or not os.path.isfile(full):
             self.send_error(404)
             return
         ctype = {
@@ -297,6 +300,13 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         length = int(self.headers.get("Content-Length", 0) or 0)
         raw = self.rfile.read(length) if length else b""
+
+        # Require a JSON content type. A cross-site form POST can only send
+        # simple content types, so this blocks CSRF against the action endpoints
+        # even if the browser has cached the Basic-Auth credentials.
+        ctype = self.headers.get("Content-Type", "").split(";")[0].strip()
+        if ctype != "application/json":
+            return self._send(415, {"error": "Content-Type must be application/json"})
         try:
             body = json.loads(raw) if raw else {}
         except Exception:
