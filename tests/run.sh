@@ -198,6 +198,8 @@ assert_grep "zmoon help lists 'install-cron'"            'zmoon install-cron'  .
 assert_grep "zmoon derives 10-char world id (not padded)" 'moon_world_id'      cat zmoon
 assert_grep "connect uses moon_world_id for orbit"       'moon_world_id'       cat zmoon
 assert_grep "install-cron targets /etc/crontab"          '/etc/crontab'        cat zmoon
+assert_grep "zmoon hardens PATH for DSM cron (minimal env)" 'export PATH=.*local/bin' cat zmoon
+assert_grep "cron reload tries DSM-native synosystemctl"  'synosystemctl'       cat zmoon
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

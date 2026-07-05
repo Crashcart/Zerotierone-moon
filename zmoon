@@ -25,6 +25,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# DSM is not standard Linux: cron and Task Scheduler invoke scripts with a
+# minimal PATH that omits /usr/local/bin, /sbin, and the Container Manager dir.
+# Without this, boot/autoupdate would call docker/sysctl/ethtool by bare name,
+# fail to find them, and (being guarded with `|| true`) silently do nothing.
+# Prepend the standard DSM binary locations so those commands always resolve.
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/syno/bin:/usr/syno/sbin:/var/packages/ContainerManager/target/usr/bin:${PATH:-}"
+
 ZMOON_VERSION="1.0.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
@@ -520,10 +527,14 @@ cmd_boot() {
 # Spaces between columns make DSM silently drop the line, so we build with tabs.
 CRON_TAG="# zmoon-boot (host tuning re-apply — do not edit this block by hand)"
 
+# Reload cron across DSM generations: DSM 7 uses synosystemctl, DSM 6 uses
+# synoservice; plain systemctl is the non-DSM fallback. Order matters — try the
+# DSM-native ones first since a stock systemctl may exist but not manage crond.
 _reload_crond() {
-    systemctl restart crond 2>/dev/null && return 0
+    synosystemctl restart crond 2>/dev/null && return 0
     synoservice --restart crond 2>/dev/null && return 0
     synoservicectl --restart crond 2>/dev/null && return 0
+    systemctl restart crond 2>/dev/null && return 0
     return 1
 }
 
@@ -547,7 +558,8 @@ cmd_install_cron() {
     if _reload_crond; then ok "crond reloaded"; else warn "reload crond manually or reboot to activate"; fi
     say ""
     say "Event-driven alternative (runs once, only on boot — no periodic overhead):"
-    say "  DSM Task Scheduler → Triggered Task → ${BOLD}Boot-up${NC} (user root): ${G}zmoon boot${NC}"
+    say "  DSM Task Scheduler → Triggered Task → ${BOLD}Boot-up${NC} (user root)"
+    say "  Run command: ${G}${self} boot${NC}   ${DIM}# absolute path — scheduler PATH is minimal${NC}"
 }
 
 cmd_uninstall_cron() {

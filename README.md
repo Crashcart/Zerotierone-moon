@@ -398,22 +398,53 @@ Two layers survive a reboot independently:
 
 Without it, the moon comes back after a reboot **slower** (small buffers, no
 offload) and **less stable** (default 30s conntrack timeout < ZeroTier's ~25s
-keepalive → periodic UDP cutouts). In **DSM Task Scheduler** → Create →
-Triggered Task → User-defined script:
+keepalive → periodic UDP cutouts).
 
-- **User**: `root` | **Event**: `Boot-up`
-- **Command**: `zmoon boot`
+> **DSM is not standard Linux — this matters here.** Task Scheduler and cron run
+> scripts with a **minimal PATH** (no `/usr/local/bin`, no `/sbin`, no Container
+> Manager dir) and as a bare user. So:
+> - Always use the **absolute path** to `zmoon` in the task — a bare `zmoon boot`
+>   may not be found. `zmoon` itself repairs its PATH internally, but the
+>   scheduler still has to locate the script.
+> - The task **must run as `root`** — `sysctl`, `ethtool`, and `docker` all need it.
+
+#### Option A — GUI Boot-up task (event-driven, recommended)
+
+**Control Panel → Task Scheduler → Create → Triggered Task → User-defined script**
+
+| Field | Value |
+|-------|-------|
+| **Task** | `zmoon boot tuning` |
+| **User** | `root` |
+| **Event** | `Boot-up` |
+| **Run command** | `/usr/local/bin/zmoon boot` |
+
+Save. To test it without rebooting: select the task → **Run**. Then check the
+log: `cat /volume1/docker/zerotier/boot.log` — you should see a fresh
+`host tuning re-applied …` line. (Adjust the path if your `DATA_DIR` differs.)
 
 `zmoon boot` re-applies the host tuning and ensures the container is started —
 the values come from `lib/tuning.sh`, the same source the installer uses, so
 they never drift.
 
-**Prefer to script it instead of the GUI?** `zmoon install-cron` adds a
-tab-formatted entry to `/etc/crontab` that runs `zmoon boot` on a schedule
-(default every 15 min — idempotent and self-healing, also recovers tuning lost
-to a DSM update). `zmoon uninstall-cron` removes it. Run as root. DSM's `@reboot`
-is unreliable, so the periodic schedule is the robust CLI path; the GUI Boot-up
-task above is the zero-overhead event-driven alternative.
+#### Option B — cron, from the command line (no GUI)
+
+```sh
+sudo /usr/local/bin/zmoon install-cron        # every 15 min (default)
+sudo /usr/local/bin/zmoon install-cron "0 * * * *"   # or a custom 5-field schedule
+sudo /usr/local/bin/zmoon uninstall-cron      # remove it
+```
+
+This appends a **tab-separated** entry (the format DSM's crond requires — spaces
+between columns make DSM silently drop the line) to `/etc/crontab` and reloads
+crond via `synosystemctl`/`synoservice`. A **periodic** schedule is used rather
+than `@reboot`, which DSM's stripped crond does not honor; the periodic run is
+idempotent and also self-heals tuning lost to a DSM package update mid-cycle.
+
+> Note: a DSM **major-version upgrade** can reset `/etc/crontab`. After a big DSM
+> update, re-run `zmoon install-cron` (or just re-run `install.sh`). The GUI
+> Boot-up task in Option A survives DSM updates more reliably — if in doubt, set
+> up both; `zmoon boot` is idempotent, so running it twice is harmless.
 
 ### Connecting a client — populated commands
 
