@@ -12,11 +12,13 @@ Keep the DS918+ ZeroTier moon node stack current, tested, and production-ready a
 (stdlib) serving live status and the auth-gated Update/Restart/authorize actions;
 `zmoon web` launches it. The **Update button pulls the repo branch and runs the
 installer, streaming the log live** (verified in a headless browser).
-Remaining before this is "gold": (1) SECURITY INFRA review of `server.py` — the
-action endpoints execute deploys; confirm Basic-Auth gating, branch-name
-validation, and LAN-only exposure are sufficient (RULE 18 — sequential, after
-build). (2) QA on the live NAS: `/api/status` against a running moon (not just the
-sample fallback). (3) add `web/`-aware assertions to `tests/run.sh`.
+SECURITY INFRA review done (2026-07-05): 3 low findings fixed in `server.py`
+(path-prefix confinement, JSON Content-Type gate blocking form CSRF, branch-name
+validation); 2 findings accepted under the **trusted-LAN threat model** (user
+directive) — unauthenticated `GET /api/status` and Basic Auth over plain HTTP.
+`web/`-aware assertions added (61 tests total). Remaining before "gold": QA on
+the live NAS — `/api/status` against a running moon (currently only the sample
+fallback is exercised) and a real web-triggered update. Not internet-exposed.
 On session start: run `bash tests/run.sh`, then proceed with user-directed work.
 
 ## TODO — Tech Debt
