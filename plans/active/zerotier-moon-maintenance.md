@@ -21,6 +21,17 @@ the live NAS — `/api/status` against a running moon (currently only the sample
 fallback is exercised) and a real web-triggered update. Not internet-exposed.
 On session start: run `bash tests/run.sh`, then proceed with user-directed work.
 
+## Speed & Stability (user priority — 2026-07-05)
+Audited the moon stack for throughput/latency and uptime/reboot-survival.
+Container side already solid (restart:always, healthcheck, process-death detect,
+fq qdisc, GARP, policy routing, NOTRACK, MSS clamp, socket buffers). **Gap found
+and fixed:** host tuning (UDP buffers, conntrack 300s timeout, GRO/TSO/GSO
+offload) did not survive a DSM reboot — DSM ignores `/etc/sysctl.conf` on boot
+and offload resets. Added `lib/tuning.sh` (single source of truth) + `zmoon boot`
+to re-apply it idempotently. **User action required:** add a DSM Task Scheduler
+**Boot-up** task (user root) running `zmoon boot` — without it the moon returns
+slower + prone to UDP cutouts after any reboot/DSM update.
+
 ## TODO — Tech Debt
 - [x] **Removed temporary LAN2_GATEWAY hardcode** from `install.sh` (2026-05-30).
   No site-specific network values live in the code. On first install the gateway
