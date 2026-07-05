@@ -7,3 +7,4 @@ docker-compose.yml
 # AI-rules synced content — refresh with: bash .ai-rules/scripts/sync-rules.sh
 .ai-rules/
 .claude/settings.json
+__pycache__/

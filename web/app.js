@@ -12,9 +12,14 @@
  * there is nothing listening.
  */
 
-// ── Config: where live data comes from. Swap these on the NAS. ──────────────
-const DATA_URL  = 'status.sample.json';   // TODO(nas): '/api/status'
-const ADMIN_API = '';                     // TODO(nas): '/api'  (empty = mock mode)
+// ── Data source ──────────────────────────────────────────────────────────────
+// When served by web/server.py (`zmoon web`), /api/status answers and the
+// action buttons go live. Opened as a plain static file it falls back to the
+// committed sample and the buttons stay in safe mock mode. No config needed.
+const LIVE_URL   = '/api/status';
+const SAMPLE_URL = 'status.sample.json';
+let   LIVE       = false;   // set true once the backend answers
+let   DATA_URL   = SAMPLE_URL;
 
 const $  = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -35,6 +40,14 @@ const fmtLatency = (ms) => (ms == null || ms < 0 ? '—' : `${ms} ms`);
 const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 // ── Data load + render ───────────────────────────────────────────────────────
+async function detectBackend() {
+  try {
+    const res = await fetch(LIVE_URL, { cache: 'no-store' });
+    if (res.ok) { LIVE = true; DATA_URL = LIVE_URL; return; }
+  } catch { /* no backend — static mode */ }
+  LIVE = false; DATA_URL = SAMPLE_URL;
+}
+
 async function load() {
   try {
     const res = await fetch(DATA_URL, { cache: 'no-store' });
@@ -134,18 +147,57 @@ const emptyRow = (msg)    => `<li><span class="k">${esc(msg)}</span><span class=
 
 // ── Admin actions (Members tab) ──────────────────────────────────────────────
 async function adminPost(path, body) {
-  if (!ADMIN_API) { toast('Mock mode — no backend wired (see web/README.md)'); return false; }
+  if (!LIVE) { toast('Mock mode — run “zmoon web” on the NAS to enable actions'); return false; }
   try {
-    const res = await fetch(`${ADMIN_API}${path}`, {
+    const res = await fetch(`/api${path}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     });
+    if (res.status === 403) { toast('Actions disabled — set WEB_ADMIN_PASSWORD in .env'); return false; }
+    if (res.status === 401) { toast('Not authorized'); return false; }
     if (!res.ok) throw new Error(res.status);
     toast('Done');
     return true;
   } catch (err) {
     toast(`Failed: ${err.message}`);
     return false;
+  }
+}
+
+// Update: kick off the deploy, then stream the log into a console overlay.
+async function runUpdate() {
+  if (!LIVE) { toast('Mock mode — run “zmoon web” on the NAS to enable updates'); return; }
+  const branch = state?.updateBranch;   // server default used when omitted
+  openConsole('Updating from repo…');
+  try {
+    const res = await fetch('/api/actions/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(branch ? { branch } : {}),
+    });
+    if (res.status === 403) { consoleLine('Actions disabled — set WEB_ADMIN_PASSWORD in .env'); return; }
+    if (res.status === 401) { consoleLine('Not authorized.'); return; }
+    if (res.status === 409) { consoleLine('An update is already running — attaching to its log…'); }
+    else if (!res.ok) { consoleLine(`Failed to start: HTTP ${res.status}`); return; }
+    pollLog();
+  } catch (err) {
+    consoleLine(`Failed to start update: ${err.message}`);
+  }
+}
+
+async function pollLog() {
+  try {
+    const res = await fetch('/api/actions/log', { cache: 'no-store' });
+    const data = await res.json();
+    setConsole(data.log || '');
+    if (data.running) {
+      setTimeout(pollLog, 1500);
+    } else {
+      consoleDone();
+      setTimeout(() => { detectBackend().then(load); }, 1500);
+    }
+  } catch (err) {
+    consoleLine(`Lost connection to updater: ${err.message} (the moon may be restarting)`);
+    consoleDone();
   }
 }
 
@@ -175,12 +227,58 @@ function initActions() {
   document.addEventListener('click', (e) => {
     const t = e.target.closest('[data-action]');
     if (!t) return;
-    if (t.dataset.action === 'restart' && !confirm('Restart the moon container?')) return;
-    adminPost(`/actions/${t.dataset.action}`).then((ok) => { if (ok) setTimeout(load, 2000); });
+    if (t.dataset.action === 'update') {
+      if (confirm('Pull the latest code from the repo and reinstall the moon?')) runUpdate();
+      return;
+    }
+    if (t.dataset.action === 'restart') {
+      if (confirm('Restart the moon container?')) {
+        adminPost('/actions/restart').then((ok) => { if (ok) setTimeout(load, 2000); });
+      }
+      return;
+    }
   });
 
-  $('#refresh-btn').addEventListener('click', load);
+  $('#refresh-btn').addEventListener('click', () => detectBackend().then(load));
   initTheme();
+}
+
+// ── Update console overlay ───────────────────────────────────────────────────
+function openConsole(title) {
+  let ov = $('#console-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'console-overlay';
+    ov.innerHTML = `
+      <div class="console-box">
+        <div class="console-head">
+          <span id="console-title"></span>
+          <button class="icon-btn" id="console-close" disabled title="Close">✕</button>
+        </div>
+        <pre id="console-out" aria-live="polite"></pre>
+      </div>`;
+    document.body.appendChild(ov);
+    $('#console-close').addEventListener('click', () => ov.remove());
+  }
+  $('#console-title').textContent = title;
+  $('#console-out').textContent = '';
+  $('#console-close').disabled = true;
+  ov.hidden = false;
+}
+function setConsole(text) {
+  const out = $('#console-out');
+  if (!out) return;
+  out.textContent = text;
+  out.scrollTop = out.scrollHeight;
+}
+function consoleLine(line) {
+  const out = $('#console-out');
+  if (out) { out.textContent += (out.textContent ? '\n' : '') + line; out.scrollTop = out.scrollHeight; }
+}
+function consoleDone() {
+  consoleLine('\n— finished —');
+  const btn = $('#console-close');
+  if (btn) btn.disabled = false;
 }
 
 function initTheme() {
@@ -209,4 +307,4 @@ function toast(msg) {
 // ── Boot ─────────────────────────────────────────────────────────────────────
 initTabs();
 initActions();
-load();
+detectBackend().then(load);

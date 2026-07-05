@@ -21,30 +21,41 @@ web/
 - **Connect** — your own client's info, the orbit command (auto-filled with the
   real moon ID), the install one-liner, and per-OS connect steps.
 
-## Run it locally
+## Two ways to run it
 
-It's static, but it `fetch()`es JSON so it needs HTTP (not `file://`):
+### 1. Live, on the NAS — `zmoon web` (recommended)
+
+`web/server.py` serves the page **and** a small API: live status plus the
+Update / Restart / authorize actions. Run it on the DS918+:
 
 ```sh
-cd web
-python3 -m http.server 8080
-# open http://localhost:8080
+zmoon web                       # → http://<nas-ip>:8088
+zmoon web --host 127.0.0.1 --port 9000
 ```
 
-Out of the box it loads `status.sample.json` and shows a **"Demo data"** banner.
+- **Update button** → pulls the branch in `AUTO_UPDATE_BRANCH` (`.env`, default
+  `dev`) from your repo and runs the installer, streaming the log live into the
+  page. Same thing `zmoon update` does — just from the browser.
+- **Actions require a password.** Set `WEB_ADMIN_PASSWORD` in `.env`; the
+  browser prompts for it (username `admin`). Leave it blank and the console is
+  **read-only** — status works, the action buttons return 403. Only expose the
+  console on a trusted LAN.
 
-## Wiring the real moon (two knobs, top of `app.js`)
+To keep it running across reboots, add a DSM **Task Scheduler** boot task
+(user `root`): `zmoon web`.
 
-```js
-const DATA_URL  = 'status.sample.json';  // → '/api/status'  (live read-only feed)
-const ADMIN_API = '';                    // → '/api'          (enables the action buttons)
+### 2. Static preview — no backend
+
+The page also runs as plain files (it `fetch()`es JSON, so it needs HTTP, not
+`file://`). It auto-detects that no API is present, loads `status.sample.json`,
+shows a **"Demo data"** banner, and keeps the action buttons in safe mock mode:
+
+```sh
+cd web && python3 -m http.server 8080     # → http://localhost:8080
 ```
 
-- `DATA_URL` — any URL that returns the JSON shape below. Read-only; the
-  Dashboard/Members/Connect views all render from it.
-- `ADMIN_API` — base path for the write actions (authorize toggle, update,
-  restart). Leave blank to keep the buttons in safe **mock mode** (they toast
-  instead of doing anything).
+No knobs to flip — `app.js` probes `/api/status` on load and switches to live
+mode automatically when the backend answers.
 
 ### Data contract (`GET /api/status`)
 

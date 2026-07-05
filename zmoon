@@ -14,6 +14,7 @@
 #   zmoon backup                  Back up moon identity (keeps last 5)
 #   zmoon restore <dir>           Restore moon identity from a backup
 #   zmoon logs [-f]               Show container logs
+#   zmoon web [--host H --port P] Serve the web console + update API
 #   zmoon autoupdate              Auto-update if AUTO_UPDATE=true in .env
 #   zmoon version                 Print zmoon + ZeroTier versions
 #   zmoon help                    Show this help
@@ -427,6 +428,26 @@ cmd_autoupdate() {
     _aulog "Update complete"
 }
 
+# ─── web console ─────────────────────────────────────────────────────────────
+cmd_web() {
+    load_env
+    command -v python3 >/dev/null 2>&1 || die "python3 not found (install via DSM Package Center)"
+    local host="0.0.0.0" port="8088"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --host) host="$2"; shift 2 ;;
+            --port) port="$2"; shift 2 ;;
+            *) die "usage: zmoon web [--host H] [--port P]" ;;
+        esac
+    done
+    if [[ -z "${WEB_ADMIN_PASSWORD:-}" ]]; then
+        warn "WEB_ADMIN_PASSWORD not set in .env — console is READ-ONLY (Update/Restart disabled)"
+        warn "Set it in .env to enable the Update button; expose only on a trusted LAN."
+    fi
+    say "Starting web console on ${BOLD}http://${host}:${port}${NC} (Ctrl-C to stop)"
+    exec python3 "$SCRIPT_DIR/web/server.py" --host "$host" --port "$port"
+}
+
 # ─── Dispatch ────────────────────────────────────────────────────────────────
 main() {
     local cmd="${1:-help}"
@@ -441,6 +462,7 @@ main() {
         backup)             cmd_backup "$@" ;;
         restore)            cmd_restore "$@" ;;
         logs)               cmd_logs "$@" ;;
+        web)                cmd_web "$@" ;;
         autoupdate)         cmd_autoupdate "$@" ;;
         version|--version|-v) cmd_version ;;
         help|--help|-h)     cmd_help ;;

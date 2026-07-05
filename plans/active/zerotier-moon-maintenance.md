@@ -7,7 +7,17 @@ active
 Keep the DS918+ ZeroTier moon node stack current, tested, and production-ready across all branches.
 
 ## Next Action
-No active sprint. Await user direction. On session start: sync AI-rules (v1.29.2 current), run `bash tests/run.sh` to confirm 55/55 pass, then proceed with user-directed work.
+**Web console initiative (in progress).** FRONTEND + BACKEND delivered a working beta:
+`web/` — single-page console (Dashboard / Members / Connect) + `web/server.py`
+(stdlib) serving live status and the auth-gated Update/Restart/authorize actions;
+`zmoon web` launches it. The **Update button pulls the repo branch and runs the
+installer, streaming the log live** (verified in a headless browser).
+Remaining before this is "gold": (1) SECURITY INFRA review of `server.py` — the
+action endpoints execute deploys; confirm Basic-Auth gating, branch-name
+validation, and LAN-only exposure are sufficient (RULE 18 — sequential, after
+build). (2) QA on the live NAS: `/api/status` against a running moon (not just the
+sample fallback). (3) add `web/`-aware assertions to `tests/run.sh`.
+On session start: run `bash tests/run.sh`, then proceed with user-directed work.
 
 ## TODO — Tech Debt
 - [x] **Removed temporary LAN2_GATEWAY hardcode** from `install.sh` (2026-05-30).

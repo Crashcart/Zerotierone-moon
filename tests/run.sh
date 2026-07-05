@@ -175,6 +175,15 @@ assert_grep ".env.example has AUTO_UPDATE"               'AUTO_UPDATE'          
 assert_grep ".env.example has AUTO_UPDATE_BRANCH"        'AUTO_UPDATE_BRANCH'   cat .env.example
 assert_grep "update.sh regenerates compose after pull"   'generate_compose'     cat update.sh
 
+# ─── Web console ─────────────────────────────────────────────────────────────
+group "web console"
+assert_ok   "web/server.py has valid python syntax"      python3 -m py_compile web/server.py
+assert_ok   "web/status.sample.json is valid JSON"       jq -e . web/status.sample.json
+assert_grep "zmoon help lists 'web'"                     'zmoon web'            ./zmoon help
+assert_grep "server.py gates actions behind auth"        'WEB_ADMIN_PASSWORD'  cat web/server.py
+assert_grep "server.py validates branch names"           'BRANCH_RE'           cat web/server.py
+assert_grep ".env.example documents WEB_ADMIN_PASSWORD"  'WEB_ADMIN_PASSWORD'  cat .env.example
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo -e "${DIM}─────────────────────────────────────────────${NC}"
