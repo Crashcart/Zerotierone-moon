@@ -17,6 +17,9 @@ ENV_FILE="$SCRIPT_DIR/.env"
 # Shared compose generator
 # shellcheck source=lib/compose.sh
 source "$SCRIPT_DIR/lib/compose.sh"
+# Shared host tuning (sysctls + NIC offload) — single source of truth for install + boot
+# shellcheck source=lib/tuning.sh
+source "$SCRIPT_DIR/lib/tuning.sh"
 
 # ─── Colours ───────────────────────────────────────────────────────────────────
 R='\033[0;31m' G='\033[0;32m' Y='\033[1;33m' B='\033[0;34m' NC='\033[0m'
@@ -214,20 +217,14 @@ fi
 sysctl -w net.ipv6.conf.all.forwarding=1 &>/dev/null
 ok "IPv6 forwarding active"
 
-# Host-level kernel tuning — applied persistently to /etc/sysctl.conf.
-# Socket buffers: 8 MB rmem/wmem is ~2× BDP for ZeroTier on 1GbE (practical
-# ZT throughput ~200-600 Mbps on J3455; 25 MB was oversized and caused cache
-# pressure). Conntrack timeout: ZeroTier keepalive fires every ~25s; the
-# default 30s UDP timeout can expire just before the keepalive under jitter.
-# NOTE: net.netfilter sysctls live in the HOST network namespace — they cannot
-# be reliably set from inside the container, so we set them here at install time.
-for param in \
-    "net.core.rmem_max=8388608" \
-    "net.core.wmem_max=8388608" \
-    "net.core.netdev_max_backlog=5000" \
-    "net.ipv4.udp_mem=102400 873800 8388608" \
-    "net.netfilter.nf_conntrack_udp_timeout=300" \
-    "net.netfilter.nf_conntrack_udp_timeout_stream=300"; do
+# Host-level kernel tuning — persisted to /etc/sysctl.conf AND applied live.
+# The values (socket buffers ~2× BDP for ZT on 1GbE; conntrack UDP timeout 300s
+# vs ZT's ~25s keepalive) live in lib/tuning.sh so the boot re-apply
+# (`zmoon boot`) never drifts from what the installer wrote. net.netfilter /
+# net.core keys cannot be set from the container namespace — the host is the
+# only place they take effect, and DSM does not reliably re-read this file on
+# reboot, which is why `zmoon boot` re-applies them (wire it to a Boot-up task).
+for param in "${HOST_SYSCTLS[@]}"; do
     key="${param%%=*}"
     if grep -q "^${key}" /etc/sysctl.conf 2>/dev/null; then
         ok "$key already set in /etc/sysctl.conf"
@@ -238,9 +235,8 @@ for param in \
 done
 sysctl -p &>/dev/null || true
 
-# NIC offload — GRO/TSO/GSO let the J3455 hardware batch packets, improving throughput
-ethtool -K "$LAN1_IF" gro on tso on gso on 2>/dev/null || true
-ethtool -K "$LAN2_IF" gro on tso on gso on 2>/dev/null || true
+# Live-apply buffers/forwarding + GRO/TSO/GSO NIC offload (hardware packet batching)
+apply_host_tuning "$LAN1_IF" "$LAN2_IF"
 ok "NIC offload tuned ($LAN1_IF, $LAN2_IF)"
 
 # ─── Step 2: Create data directories ─────────────────────────────────────────

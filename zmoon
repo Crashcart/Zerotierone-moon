@@ -15,6 +15,7 @@
 #   zmoon restore <dir>           Restore moon identity from a backup
 #   zmoon logs [-f]               Show container logs
 #   zmoon web [--host H --port P] Serve the web console + update API
+#   zmoon boot                    Re-apply host tuning on reboot (DSM Boot-up task)
 #   zmoon autoupdate              Auto-update if AUTO_UPDATE=true in .env
 #   zmoon version                 Print zmoon + ZeroTier versions
 #   zmoon help                    Show this help
@@ -428,6 +429,37 @@ cmd_autoupdate() {
     _aulog "Update complete"
 }
 
+# ─── boot — re-apply host tuning after a reboot ──────────────────────────────
+# DSM does not reliably re-read /etc/sysctl.conf on boot and NIC offload always
+# resets, so the host-level speed/stability tuning must be re-applied. Wire this
+# to a DSM Task Scheduler "Boot-up" trigger (user: root). Container itself is
+# restart:always, so this only ensures the HOST is retuned and the container up.
+cmd_boot() {
+    load_env
+    # shellcheck source=lib/tuning.sh
+    source "$SCRIPT_DIR/lib/tuning.sh"
+    local log_file="$DATA_DIR/boot.log"
+    mkdir -p "$DATA_DIR"
+    _blog() { echo "$(date '+%Y-%m-%d %H:%M:%S') [boot] $*" | tee -a "$log_file"; }
+
+    local if1 if2
+    if1="$(iface_for "$LAN1_SUBNET")"
+    if2="$(iface_for "$LAN2_SUBNET")"
+    apply_host_tuning "$if1" "$if2"
+    _blog "host tuning re-applied (socket buffers + conntrack 300s + offload on ${if1:-?}/${if2:-?})"
+
+    if command -v docker >/dev/null 2>&1; then
+        if container_running; then
+            _blog "container ${CONTAINER_NAME} already running"
+        elif docker start "$CONTAINER_NAME" >/dev/null 2>&1; then
+            _blog "started container ${CONTAINER_NAME}"
+        else
+            _blog "WARNING: could not start ${CONTAINER_NAME}"
+        fi
+    fi
+    _blog "boot tasks complete"
+}
+
 # ─── web console ─────────────────────────────────────────────────────────────
 cmd_web() {
     load_env
@@ -463,6 +495,7 @@ main() {
         restore)            cmd_restore "$@" ;;
         logs)               cmd_logs "$@" ;;
         web)                cmd_web "$@" ;;
+        boot)               cmd_boot "$@" ;;
         autoupdate)         cmd_autoupdate "$@" ;;
         version|--version|-v) cmd_version ;;
         help|--help|-h)     cmd_help ;;

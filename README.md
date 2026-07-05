@@ -384,8 +384,29 @@ COMMIT
 
 ## Reboot Persistence
 
-Routes inside Docker containers are wiped on reboot. The `setuproutes.sh` approach
-re-applies them every time the container starts.
+Two layers survive a reboot independently:
+
+- **Container internals** (routes, iptables, fq qdisc, gratuitous ARP) — the
+  container is `restart: always`, and `setuproutes.sh` + `entrypoint.sh`
+  re-apply everything each time it starts.
+- **Host tuning** (8 MB UDP socket buffers, `netdev_max_backlog`, conntrack UDP
+  timeout 300s, GRO/TSO/GSO NIC offload) — DSM does **not** reliably re-read
+  `/etc/sysctl.conf` on boot and offload always resets, so this must be
+  re-applied. `zmoon boot` does it (idempotent, logs to `$DATA_DIR/boot.log`).
+
+### Wire `zmoon boot` to a Boot-up task (do this once)
+
+Without it, the moon comes back after a reboot **slower** (small buffers, no
+offload) and **less stable** (default 30s conntrack timeout < ZeroTier's ~25s
+keepalive → periodic UDP cutouts). In **DSM Task Scheduler** → Create →
+Triggered Task → User-defined script:
+
+- **User**: `root` | **Event**: `Boot-up`
+- **Command**: `zmoon boot`
+
+`zmoon boot` re-applies the host tuning and ensures the container is started —
+the values come from `lib/tuning.sh`, the same source the installer uses, so
+they never drift.
 
 If you hit issues after a reboot:
 

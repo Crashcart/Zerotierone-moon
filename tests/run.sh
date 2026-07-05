@@ -42,7 +42,7 @@ assert_grep() {
     if "$@" 2>/dev/null | grep -qE "$pat"; then ok "$desc"; else no "$desc"; fi
 }
 
-SHELL_SCRIPTS=(install.sh update.sh entrypoint.sh zmoon lib/compose.sh config/setuproutes.sh tests/run.sh)
+SHELL_SCRIPTS=(install.sh update.sh entrypoint.sh zmoon lib/compose.sh lib/tuning.sh config/setuproutes.sh tests/run.sh)
 
 # ─── 1. Shell syntax ─────────────────────────────────────────────────────────
 group "shell syntax (bash -n)"
@@ -183,6 +183,16 @@ assert_grep "zmoon help lists 'web'"                     'zmoon web'            
 assert_grep "server.py gates actions behind auth"        'WEB_ADMIN_PASSWORD'  cat web/server.py
 assert_grep "server.py validates branch names"           'BRANCH_RE'           cat web/server.py
 assert_grep ".env.example documents WEB_ADMIN_PASSWORD"  'WEB_ADMIN_PASSWORD'  cat .env.example
+
+# ─── Boot re-apply (reboot survival of host tuning) ──────────────────────────
+group "boot / host tuning"
+assert_grep "zmoon help lists 'boot'"                    'zmoon boot'          ./zmoon help
+assert_grep "lib/tuning.sh defines HOST_SYSCTLS"         'HOST_SYSCTLS='       cat lib/tuning.sh
+assert_grep "tuning centralizes conntrack UDP timeout"   'nf_conntrack_udp_timeout=300' cat lib/tuning.sh
+assert_grep "install.sh sources shared tuning"           'source .*lib/tuning.sh'       cat install.sh
+assert_grep "install.sh has no inline sysctl value dup"  'HOST_SYSCTLS'        cat install.sh
+# shellcheck disable=SC2016  # expansion is intentional inside the bash -c subshell
+assert_ok   "lib/tuning.sh sources without error"        bash -c 'source lib/tuning.sh && [ ${#HOST_SYSCTLS[@]} -ge 5 ]'
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
