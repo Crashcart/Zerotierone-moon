@@ -7,6 +7,16 @@ active
 Keep the DS918+ ZeroTier moon node stack current, tested, and production-ready across all branches.
 
 ## Next Action
+**2026-07-06 install day:** `dev` fast-forwarded to `7249875` (user-approved) —
+the documented one-liner now installs everything: web console + update API,
+`zmoon boot/connect/install-cron/web`, tuning lib, perf fixes, and the
+curl|bash prompt fix (prompts read /dev/tty; plain `read` was eating script
+lines as input on fresh installs). CI green on dev. After the NAS install:
+run `zmoon connect` for client commands, wire `zmoon boot` (Task Scheduler
+Boot-up, root, absolute path) or `zmoon install-cron`, and do the live-QA pass
+(`/api/status` against the running moon + one web-triggered update).
+
+## Previous Next Action
 **Web console initiative (in progress).** FRONTEND + BACKEND delivered a working beta:
 `web/` — single-page console (Dashboard / Members / Connect) + `web/server.py`
 (stdlib) serving live status and the auth-gated Update/Restart/authorize actions;
