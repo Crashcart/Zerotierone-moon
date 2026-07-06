@@ -31,6 +31,19 @@ the live NAS — `/api/status` against a running moon (currently only the sample
 fallback is exercised) and a real web-triggered update. Not internet-exposed.
 On session start: run `bash tests/run.sh`, then proceed with user-directed work.
 
+## Moon/client mode + fresh-install resilience — UI-tested (2026-07-06)
+Delivered and pushed to dev (CI green, 97 tests). (1) entrypoint no longer
+`die`s on fatal fresh-install states — it hold()s (alive+idle, unhealthy,
+logs the fix) so `restart: always` can't crash-loop. (2) MOON_MODE in .env
+(default true) → GENERATE_MOON in compose; client mode deorbits own moon but
+keeps moon.json/moons.d (re-enable restores same Moon ID). (3) Web Dashboard
+moon-mode checkbox: promote = confirm; demote = must TYPE the Moon ID, server
+independently gates (428 on mismatch) — a stray click can't demote a live moon.
+Field-passthrough audit: 43-assertion headless-browser suite proves every
+status field reaches its DOM slot and the .env→compose→container-env chain
+carries all fields. Bug caught by the test: web build_status emitted the
+16-char padded moon id vs the 10-char world id the gate/CLI use — fixed.
+
 ## Stress test — SRE + TECH LEAD scrutiny (2026-07-05)
 Joint slowdown/stability pass over the stack. Container config had no new
 findings (prior tuning table stands). The web layer had one HIGH finding,
