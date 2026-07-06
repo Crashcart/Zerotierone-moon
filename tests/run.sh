@@ -216,6 +216,21 @@ assert_grep "install.sh prompts read the terminal, not stdin"  '/dev/tty'      c
 assert_grep "get-latest-dev.sh prompts read the terminal"      '/dev/tty'      cat get-latest-dev.sh
 assert_grep "install.sh ask() dies clean when non-interactive" 'no terminal'   cat install.sh
 
+# ─── Moon/client mode + crash-loop resilience ────────────────────────────────
+group "moon mode + resilience"
+assert_grep "entrypoint holds (no restart loop) on fatal"      'while :; do sleep' cat entrypoint.sh
+assert_grep "fatal paths use hold, not exit"                   'hold "ZeroTier'    cat entrypoint.sh
+assert_grep "client mode deorbits own moon, keeps files"       'CLIENT MODE'       cat entrypoint.sh
+assert_grep "compose gates moon on MOON_MODE"                  'GENERATE_MOON=..MOON_MODE' cat lib/compose.sh
+assert_grep ".env.example documents MOON_MODE"                 'MOON_MODE=true'    cat .env.example
+assert_grep "install.sh writes MOON_MODE to .env"             'MOON_MODE=true'    cat install.sh
+assert_grep "server exposes moonMode in status"               'moonMode'          cat web/server.py
+assert_grep "demote requires typed confirm (428 gate)"        'confirmation mismatch' cat web/server.py
+assert_grep "demote confirm compares the moon world id"       'moon_world_id'     cat web/server.py
+assert_grep "status moon.id is the 10-char world id"          'moon_id = moon_world_id' cat web/server.py
+assert_grep "UI has the guarded moon-mode toggle"             'moon-toggle'       cat web/index.html
+assert_grep "UI toggle demote uses a typed prompt"            'Type .{0,40}Moon ID' cat web/app.js
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo -e "${DIM}─────────────────────────────────────────────${NC}"

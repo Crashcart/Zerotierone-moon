@@ -44,7 +44,7 @@ services:
       - ${DATA_DIR}/local.conf:/var/lib/zerotier-one/local.conf:ro
     environment:
       - NETWORK_IDS=${ZT_NETWORK_ID}
-      - GENERATE_MOON=true
+      - GENERATE_MOON=${MOON_MODE:-true}
       - MOON_ENDPOINTS=${LAN1_CONTAINER_IP}/9993,${LAN2_CONTAINER_IP}/9993${ZT_PUBLIC_ENDPOINT:+,${ZT_PUBLIC_ENDPOINT}/9993}
 
 networks:

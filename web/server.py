@@ -132,6 +132,50 @@ def first_moon_id():
         return os.path.basename(f)[:-5]
     return ""
 
+def moon_world_id():
+    """10-char world ID (`orbit`/demote-confirm form) from the padded filename."""
+    padded = first_moon_id()
+    return padded[-10:] if padded else ""
+
+def current_moon_mode():
+    """Read MOON_MODE fresh from .env each time — the mode endpoint edits it."""
+    return load_env().get("MOON_MODE", "true").lower() != "false"
+
+def set_moon_mode(want_moon):
+    """Rewrite (or append) the MOON_MODE line in .env."""
+    path = os.path.join(REPO_DIR, ".env")
+    value = "true" if want_moon else "false"
+    try:
+        lines = open(path).read().splitlines() if os.path.exists(path) else []
+        for i, ln in enumerate(lines):
+            if ln.startswith("MOON_MODE="):
+                lines[i] = f"MOON_MODE={value}"
+                break
+        else:
+            lines.append(f"MOON_MODE={value}")
+        with open(path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        return True
+    except Exception:
+        return False
+
+def start_mode_apply():
+    """Regenerate compose from the edited .env and restart the container —
+    update.sh --no-build does exactly that, streamed via the same job log."""
+    with _job_lock:
+        if job_running():
+            return False, "another job is already running"
+        os.makedirs(DATA_DIR, exist_ok=True)
+        logf = open(LOG_PATH, "w")
+        logf.write(f"=== zmoon web mode change — {time.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+        logf.flush()
+        override = os.environ.get("ZTMOON_UPDATE_CMD", "")
+        cmd = override.split() if override else ["bash", os.path.join(REPO_DIR, "update.sh"), "--no-build"]
+        _job["proc"] = subprocess.Popen(cmd, cwd=REPO_DIR, stdout=logf, stderr=subprocess.STDOUT)
+        logf.close()
+        _job["started"] = time.time()
+        return True, "started"
+
 # NETWORK_ID is interpolated into in-container shell commands. It comes from our
 # own .env, but validating it keeps the string inert no matter what ends up there.
 NETWORK_ID_RE = re.compile(r"^[0-9a-fA-F]{16}$")
@@ -171,7 +215,7 @@ def controller_network_and_members():
 
 def build_status():
     info, raw_peers = zt_info_and_peers()
-    moon_id = first_moon_id()
+    moon_id = moon_world_id() or info.get("address", "")  # 10-char, matches orbit/confirm
     online = bool(info.get("online"))
     status = {
         "generatedAt": int(time.time()),
@@ -187,6 +231,7 @@ def build_status():
                 "public": (ENV.get("ZT_PUBLIC_ENDPOINT", "") + "/9993") if ENV.get("ZT_PUBLIC_ENDPOINT") else "",
             },
         },
+        "moonMode": current_moon_mode(),
         "interfaces": [],
         "peers": [],
         "network": {"id": NETWORK_ID, "name": "", "ipPool": "", "routes": []},
@@ -385,6 +430,28 @@ class Handler(BaseHTTPRequestHandler):
             ok = restart_container()
             _status_cache["at"] = 0.0   # next status read reflects the restart
             return self._send(200, {"ok": ok})
+
+        if path == "/api/actions/mode":
+            want_moon = bool(body.get("moon"))
+            if want_moon == current_moon_mode():
+                return self._send(200, {"ok": True, "message": "already in that mode"})
+            if not want_moon:
+                # Demotion breaks every device orbiting this moon — require the
+                # operator to type the Moon ID (or DEMOTE if none exists yet) so
+                # it cannot happen from a stray click. Promotion needs no code.
+                expected = moon_world_id() or "DEMOTE"
+                confirm = str(body.get("confirm", "")).strip().lower()
+                if confirm != expected.lower():
+                    return self._send(428, {"ok": False,
+                        "error": "confirmation mismatch — type the Moon ID to demote",
+                        "hint": "moon-id" if expected != "DEMOTE" else "DEMOTE"})
+            if not set_moon_mode(want_moon):
+                return self._send(500, {"ok": False, "error": "could not write .env"})
+            started, msg = start_mode_apply()
+            _status_cache["at"] = 0.0
+            return self._send(200 if started else 409,
+                              {"ok": started, "started": started, "message": msg,
+                               "mode": "moon" if want_moon else "client"})
 
         m = re.match(r"^/api/members/([0-9a-fA-F]{10})/authorize$", path)
         if m:

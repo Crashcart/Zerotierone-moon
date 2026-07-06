@@ -7,6 +7,20 @@ ZT_TIMEOUT=30
 log()  { echo "[zerotier-moon] $*"; }
 die()  { echo "[zerotier-moon] ERROR: $*" >&2; exit 1; }
 
+# Fatal-but-inspectable states: exiting under `restart: always` would put the
+# container in an infinite reboot loop (crash → restart → same crash), burning
+# CPU and flooding logs on a box that may simply be missing config. Instead,
+# hold the container alive and idle: the healthcheck (zerotier-cli status)
+# reports unhealthy, `docker logs` shows exactly what to fix, and `zmoon update`
+# restarts it cleanly after the fix. Docker does not restart a running-but-
+# unhealthy container, so the loop is broken.
+hold() {
+    echo "[zerotier-moon] FATAL: $*" >&2
+    echo "[zerotier-moon] Container held for inspection (no restart loop)." >&2
+    echo "[zerotier-moon] Fix the issue, then run: zmoon update --no-build" >&2
+    while :; do sleep 3600; done
+}
+
 # ─── Create data directory if missing ─────────────────────────────────────────
 mkdir -p "$ZT_HOME/moons.d"
 
@@ -28,10 +42,10 @@ for i in $(seq 1 $ZT_TIMEOUT); do
     fi
     # Detect immediate process death rather than waiting the full timeout
     if ! kill -0 "$ZT_PID" 2>/dev/null; then
-        die "ZeroTier process (PID $ZT_PID) exited unexpectedly on startup"
+        hold "ZeroTier process (PID $ZT_PID) exited on startup — check /dev/net/tun and the data dir mount"
     fi
     if [[ $i -eq $ZT_TIMEOUT ]]; then
-        die "ZeroTier did not start within ${ZT_TIMEOUT}s"
+        hold "ZeroTier did not start within ${ZT_TIMEOUT}s"
     fi
     sleep 1
 done
@@ -100,7 +114,7 @@ if [[ "${GENERATE_MOON:-false}" == "true" ]]; then
             [[ -f "$ZT_HOME/identity.public" ]] && break
             sleep 1
         done
-        [[ -f "$ZT_HOME/identity.public" ]] || die "identity.public not found after 10s"
+        [[ -f "$ZT_HOME/identity.public" ]] || hold "identity.public not found after 10s — data dir may not be writable"
 
         zerotier-idtool initmoon "$ZT_HOME/identity.public" > "$MOON_JSON"
 
@@ -132,6 +146,15 @@ if [[ "${GENERATE_MOON:-false}" == "true" ]]; then
         zerotier-cli orbit "$MOON_ID" "$MOON_ID" 2>/dev/null || true
         log "Moon ID: $MOON_ID"
         log "Clients: zerotier-cli orbit $MOON_ID $MOON_ID"
+    fi
+elif [[ -f "$ZT_HOME/moon.json" ]]; then
+    # Client mode on a node that WAS a moon: stop acting as our own root, but
+    # keep moon.json and moons.d/ intact — flipping moon mode back on restores
+    # the same moon ID, so a demotion is deliberate-but-recoverable.
+    MOON_ID=$(jq -r '.id' "$ZT_HOME/moon.json" 2>/dev/null || true)
+    if [[ -n "$MOON_ID" && "$MOON_ID" != "null" ]]; then
+        zerotier-cli deorbit "$MOON_ID" 2>/dev/null || true
+        log "CLIENT MODE: deorbited own moon $MOON_ID (moon files kept — re-enable moon mode to restore)"
     fi
 fi
 

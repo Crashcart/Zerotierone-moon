@@ -15,7 +15,7 @@ web/
 ## Tabs
 
 - **Dashboard** — moon online/offline, moon ID, uptime, version, endpoints,
-  interfaces, and the live peer table.
+  interfaces, the live peer table, and the **Moon-mode toggle** (see below).
 - **Members** — the network's members with an authorize toggle, plus
   *Update moon* / *Restart moon* actions. (Admin — needs a backend, see below.)
 - **Connect** — your own client's info, the orbit command (auto-filled with the
@@ -76,6 +76,17 @@ mode automatically when the backend answers.
 
 Include `"_sample": true` to force the demo banner; omit it for live data.
 
+### Moon vs. client mode
+
+The Dashboard checkbox flips `MOON_MODE` in `.env` and re-applies
+(`update.sh --no-build`). **Promoting** to moon needs only a confirm dialog.
+**Demoting** to a plain client is intentionally hard to do by accident — it
+breaks every device orbiting this moon, so the operator must **type the Moon ID
+exactly** (a stray click, mis-tap, or Enter-mash cannot demote a live moon). The
+server enforces the same check independently: `POST /api/actions/mode` returns
+**428** unless `confirm` matches the moon's 10-char world ID. Demotion keeps
+`moon.json` + `moons.d/`, so re-checking the box restores the **same Moon ID**.
+
 ### Admin endpoints (only when `ADMIN_API` is set)
 
 | Button            | Call                                             |
@@ -83,6 +94,7 @@ Include `"_sample": true` to force the demo banner; omit it for live data.
 | Authorize toggle  | `POST /api/members/<addr>/authorize` `{authorized}` |
 | Update moon       | `POST /api/actions/update`                       |
 | Restart moon      | `POST /api/actions/restart`                      |
+| Moon/client mode  | `POST /api/actions/mode` `{moon, confirm}` (demote needs Moon ID) |
 
 ## Where the data comes from
 

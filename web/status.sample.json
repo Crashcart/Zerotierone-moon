@@ -1,6 +1,7 @@
 {
   "_sample": true,
   "generatedAt": 1751731200,
+  "moonMode": true,
   "moon": {
     "id": "0000000000",
     "subtitle": "DS918+ root anchor (demo)",

@@ -81,6 +81,15 @@ function render(s) {
   $('#moon-uptime').textContent  = fmtDuration(moon.uptimeSeconds);
   $('#moon-peercount').textContent = (s.peers || []).length;
 
+  // Mode card — checkbox only enabled against a live backend
+  const isMoon = s.moonMode !== false;
+  const toggle = $('#moon-toggle');
+  toggle.checked = isMoon;
+  toggle.disabled = !LIVE;
+  const modeTag = $('#mode-tag');
+  modeTag.dataset.mode = isMoon ? 'moon' : 'client';
+  modeTag.textContent = isMoon ? 'MOON' : 'CLIENT';
+
   // Endpoints
   const eps = moon.endpoints || {};
   $('#endpoints-list').innerHTML = [
@@ -222,6 +231,7 @@ function initActions() {
 
   // Authorize toggles + moon actions (delegated)
   document.addEventListener('change', (e) => {
+    if (e.target.id === 'moon-toggle') { onModeToggle(e.target); return; }
     const t = e.target.closest('[data-authorize]');
     if (!t) return;
     adminPost(`/members/${t.dataset.authorize}/authorize`, { authorized: t.checked })
@@ -244,6 +254,52 @@ function initActions() {
 
   $('#refresh-btn').addEventListener('click', () => detectBackend().then(load));
   initTheme();
+}
+
+// ── Moon/client mode toggle ──────────────────────────────────────────────────
+// Promoting to moon: one confirm dialog. Demoting to client is deliberately
+// hard to do by accident: the operator must TYPE the Moon ID exactly — a stray
+// click, misclick, or Enter-mash cannot demote a working moon.
+async function onModeToggle(box) {
+  const wantMoon = box.checked;
+  const revert = () => { box.checked = !wantMoon; };
+  if (!LIVE) { revert(); toast('Mock mode — run “zmoon web” on the NAS'); return; }
+
+  let confirmText = '';
+  if (wantMoon) {
+    if (!confirm('Enable MOON mode? This node becomes a root anchor and clients can orbit it.')) { revert(); return; }
+  } else {
+    const moonId = state?.moon?.id || '';
+    const expected = moonId || 'DEMOTE';
+    const typed = prompt(
+      `DEMOTE this moon to a plain client?\n\n` +
+      `Every device orbiting it will lose its root anchor.\n` +
+      `Moon files are kept, so re-enabling restores the same Moon ID.\n\n` +
+      `Type ${moonId ? `the Moon ID (${moonId})` : `DEMOTE`} to confirm:`);
+    if (typed === null || typed.trim().toLowerCase() !== expected.toLowerCase()) {
+      revert();
+      if (typed !== null) toast('Confirmation did not match — mode unchanged');
+      return;
+    }
+    confirmText = typed.trim();
+  }
+
+  openConsole(wantMoon ? 'Switching to MOON mode…' : 'Demoting to CLIENT mode…');
+  try {
+    const res = await fetch('/api/actions/mode', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ moon: wantMoon, confirm: confirmText }),
+    });
+    if (res.status === 403) { consoleLine('Actions disabled — set WEB_ADMIN_PASSWORD in .env'); revert(); return; }
+    if (res.status === 401) { consoleLine('Not authorized.'); revert(); return; }
+    if (res.status === 428) { consoleLine('Server rejected the confirmation — mode unchanged.'); revert(); return; }
+    if (res.status === 409) { consoleLine('Another job is running — try again when it finishes.'); revert(); return; }
+    if (!res.ok) { consoleLine(`Failed: HTTP ${res.status}`); revert(); return; }
+    pollLog();
+  } catch (err) {
+    consoleLine(`Failed to change mode: ${err.message}`);
+    revert();
+  }
 }
 
 // ── Update console overlay ───────────────────────────────────────────────────

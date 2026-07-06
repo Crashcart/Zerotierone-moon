@@ -159,6 +159,15 @@ tbody tr:hover { background:var(--surface-2); }
 /* ── Footer ──────────────────────────────────────────── */
 .foot { text-align:center; color:var(--muted); font-size:12px; padding:16px; }
 
+/* ── Mode card ───────────────────────────────────────── */
+.mode-row { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.mode-label { display:flex; align-items:center; gap:10px; cursor:pointer; font-size:14px; }
+.mode-label input { width:18px; height:18px; accent-color:var(--accent); cursor:pointer; }
+.mode-label input:disabled { cursor:not-allowed; }
+.mode-note { margin:10px 0 0; }
+.tag[data-mode="moon"]   { background:color-mix(in srgb,var(--accent) 18%,transparent); color:var(--accent); }
+.tag[data-mode="client"] { background:color-mix(in srgb,var(--warn) 18%,transparent);   color:var(--warn); }
+
 /* ── Update console overlay ───────────────────────────── */
 #console-overlay {
   position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex;

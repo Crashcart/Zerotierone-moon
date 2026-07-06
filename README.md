@@ -453,6 +453,15 @@ moon, with the 10-char Moon ID and network ID already filled in (install → joi
 → orbit → verify, plus the Windows `.moon`-file path). The browser console's
 **Connect** tab shows the same, auto-filled from live status.
 
+### Fresh install won't crash-loop
+
+If the container starts before it can work (data dir not yet mounted, `/dev/net/tun`
+missing, identity not generated), it does **not** exit under `restart: always` —
+that would spin forever. Instead it **holds alive and idle**, the healthcheck goes
+unhealthy, and `docker logs zerotier-moon` prints the exact reason plus the fix
+(`zmoon update --no-build`). A running-but-unhealthy container is not restarted by
+Docker, so there is no reboot loop to burn CPU or flood logs.
+
 If you hit issues after a reboot:
 
 1. Check the container started: Container Manager → Container → Status = Running
