@@ -27,7 +27,24 @@ step() { echo -e "\n${B}[>]${NC} $*"; }
 ok()   { echo -e "  ${G}✓${NC} $*"; }
 warn() { echo -e "  ${Y}!${NC} $*"; }
 die()  { echo -e "  ${R}✗${NC} $*" >&2; exit 1; }
-ask()  { read -rp "    $1: " "$2"; }
+
+# Read a prompt from the CONTROLLING TERMINAL, not stdin. Under
+# `curl … | sudo bash`, stdin is the exhausted curl pipe — a plain `read`
+# hits EOF there and set -e kills the whole install at the first prompt.
+# Returns 1 only when no terminal exists at all (fully non-interactive run).
+tty_read() {   # tty_read "prompt" VARNAME
+    local __prompt="$1" __var="$2" __in
+    if [[ -t 0 ]]; then
+        read -rp "$__prompt" __in || return 1
+    elif { exec 3</dev/tty; } 2>/dev/null; then
+        read -u 3 -rp "$__prompt" __in || { exec 3<&-; return 1; }
+        exec 3<&-
+    else
+        return 1
+    fi
+    printf -v "$__var" '%s' "$__in"
+}
+ask()  { tty_read "    $1: " "$2" || die "$2 is required but no terminal is available — create/edit .env and re-run"; }
 
 # ─── Root check ───────────────────────────────────────────────────────────────
 [[ $EUID -eq 0 ]] || die "Run as root: sudo -i, then bash install.sh"
@@ -107,8 +124,9 @@ else
     _need() {
         local prompt="$1" varname="$2"
         [[ -n "${!varname}" ]] && return 0
-        local input
-        read -rp "    ${prompt}: " input
+        local input=""
+        tty_read "    ${prompt}: " input \
+            || die "${varname} could not be auto-detected and no terminal is available — set it in .env and re-run"
         printf -v "$varname" '%s' "$input"
     }
 

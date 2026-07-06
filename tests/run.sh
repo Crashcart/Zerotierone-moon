@@ -42,7 +42,7 @@ assert_grep() {
     if "$@" 2>/dev/null | grep -qE "$pat"; then ok "$desc"; else no "$desc"; fi
 }
 
-SHELL_SCRIPTS=(install.sh update.sh entrypoint.sh zmoon lib/compose.sh lib/tuning.sh config/setuproutes.sh tests/run.sh)
+SHELL_SCRIPTS=(install.sh update.sh entrypoint.sh get-latest-dev.sh zmoon lib/compose.sh lib/tuning.sh config/setuproutes.sh tests/run.sh)
 
 # ─── 1. Shell syntax ─────────────────────────────────────────────────────────
 group "shell syntax (bash -n)"
@@ -208,6 +208,13 @@ assert_grep "status uses bulk controller fetch (no N+1)"  'controller_network_an
 assert_grep "info+peers combined into one docker exec"    'zt_info_and_peers'   cat web/server.py
 assert_grep "status responses served from TTL cache"      'STATUS_TTL'          cat web/server.py
 assert_grep "network id validated before shell interpolation" 'NETWORK_ID_RE'   cat web/server.py
+
+# ─── curl|bash install path (one-line install regression guards) ─────────────
+# Under `curl | sudo bash` stdin is the exhausted pipe: a plain `read` hits EOF
+# and set -e kills the install at the first prompt. Prompts must use /dev/tty.
+assert_grep "install.sh prompts read the terminal, not stdin"  '/dev/tty'      cat install.sh
+assert_grep "get-latest-dev.sh prompts read the terminal"      '/dev/tty'      cat get-latest-dev.sh
+assert_grep "install.sh ask() dies clean when non-interactive" 'no terminal'   cat install.sh
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

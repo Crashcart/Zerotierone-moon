@@ -141,10 +141,20 @@ if [[ ! -f "$ENV_FILE" ]]; then
     echo "  Find your ZeroTier Network ID at: https://my.zerotier.com"
     echo
 
+    # This script normally arrives via `curl … | sudo bash`, which leaves stdin
+    # pointing at the exhausted curl pipe — prompts must read /dev/tty instead.
+    # A plain `read` would hit EOF and set -e would kill the install here.
     _ask() {
-        local prompt="$1" var="$2" current input tmp
+        local prompt="$1" var="$2" current input="" tmp
         current=$(grep "^${var}=" "$ENV_FILE" | cut -d= -f2- | tr -d '"' || echo "")
-        read -rp "    ${prompt} [${current}]: " input
+        if [[ -t 0 ]]; then
+            read -rp "    ${prompt} [${current}]: " input || true
+        elif { exec 3</dev/tty; } 2>/dev/null; then
+            read -u 3 -rp "    ${prompt} [${current}]: " input || true
+            exec 3<&-
+        else
+            warn "no terminal — keeping default for ${var} (edit ${ENV_FILE} to change)"
+        fi
         input="${input:-$current}"
         tmp=$(mktemp)
         sed "s|^${var}=.*|${var}=${input}|" "$ENV_FILE" > "$tmp" && mv "$tmp" "$ENV_FILE"
