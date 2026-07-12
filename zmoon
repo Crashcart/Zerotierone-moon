@@ -557,8 +557,9 @@ _reload_crond() {
 
 cmd_install_cron() {
     [[ "$(id -u)" -eq 0 ]] || die "run as root (sudo -i) — editing /etc/crontab needs root"
-    load_env
-    local schedule="${1:-*/15 * * * *}" crontab="/etc/crontab" self
+    # No load_env: nothing here needs .env, and staying independent of it lets
+    # install.sh call this before the first config is even written.
+    local schedule="${1:-*/15 * * * *}" crontab="${ZMOON_CRONTAB:-/etc/crontab}" self
     self="$(command -v zmoon 2>/dev/null || echo "$SCRIPT_DIR/zmoon")"
     [[ -f "$crontab" ]] || die "$crontab not found — is this a DSM host?"
 
@@ -581,7 +582,7 @@ cmd_install_cron() {
 
 cmd_uninstall_cron() {
     [[ "$(id -u)" -eq 0 ]] || die "run as root (sudo -i)"
-    local crontab="/etc/crontab" tmp
+    local crontab="${ZMOON_CRONTAB:-/etc/crontab}" tmp
     grep -qF "$CRON_TAG" "$crontab" 2>/dev/null || { ok "no zmoon cron entry present"; return 0; }
     tmp="$(mktemp)"
     grep -vF "$CRON_TAG" "$crontab" | grep -v 'zmoon boot' > "$tmp" && cat "$tmp" > "$crontab"

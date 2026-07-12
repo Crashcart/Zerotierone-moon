@@ -427,7 +427,11 @@ log: `cat /volume1/docker/zerotier/boot.log` — you should see a fresh
 the values come from `lib/tuning.sh`, the same source the installer uses, so
 they never drift.
 
-#### Option B — cron, from the command line (no GUI)
+#### Option B — cron (installed automatically)
+
+**`install.sh` and `update.sh` install this cron for you** — it's idempotent
+(a tagged `/etc/crontab` block; re-running never adds a second job). Manual
+control if you want it:
 
 ```sh
 sudo /usr/local/bin/zmoon install-cron        # every 15 min (default)

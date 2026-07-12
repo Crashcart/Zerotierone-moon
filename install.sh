@@ -441,6 +441,17 @@ chmod +x "$SCRIPT_DIR/zmoon"
 ln -sf "$SCRIPT_DIR/zmoon" /usr/local/bin/zmoon
 ok "zmoon installed → /usr/local/bin/zmoon (run 'zmoon update' from anywhere)"
 
+# ─── Step 6c: Persist tuning + watchdog via cron ─────────────────────────────
+# `zmoon boot` re-applies host tuning after reboots AND restarts a wedged
+# (running-but-offline) moon. install-cron is idempotent — it checks for its
+# tagged /etc/crontab block and never adds a second job.
+step "Installing tuning + watchdog cron (every 15 min)"
+if bash "$SCRIPT_DIR/zmoon" install-cron; then
+    ok "cron active — reboots and offline-moon states self-heal"
+else
+    warn "cron install failed (non-DSM host?) — add a DSM Boot-up task: /usr/local/bin/zmoon boot"
+fi
+
 # ─── Step 7: Start the container ─────────────────────────────────────────────
 step "Starting container"
 
@@ -477,9 +488,9 @@ echo "  Next steps:"
 echo "  1. Wait ~30s for the moon to compile its identity, then get the exact,"
 echo "     ready-to-paste client commands (Moon ID + network filled in):"
 echo "       zmoon connect"
-echo "  2. Lock in speed + stability across reboots (pick one):"
-echo "       zmoon install-cron          — auto re-apply tuning via DSM cron"
-echo "       …or DSM Task Scheduler → Boot-up task (root): zmoon boot"
+echo "  2. Reboot persistence + offline-moon watchdog: installed automatically"
+echo "     (cron, every 15 min). Optional instant-on-boot extra:"
+echo "       DSM Task Scheduler → Boot-up task (root): /usr/local/bin/zmoon boot"
 echo
 echo "  Update (one command, from anywhere):"
 echo "    zmoon update"

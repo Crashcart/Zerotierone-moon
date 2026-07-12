@@ -281,6 +281,17 @@ if ! $ZT_READY; then
     die "ZeroTier not ready after 60s. Check: docker logs $CONTAINER_NAME"
 fi
 
+# ─── Tuning + watchdog cron ───────────────────────────────────────────────────
+# Idempotent (tagged /etc/crontab block — never adds a second job). Ensures
+# existing installs that only ever run the update path also get reboot-persistent
+# tuning and the offline-moon watchdog.
+step "Ensuring tuning + watchdog cron"
+if bash "$SCRIPT_DIR/zmoon" install-cron; then
+    ok "cron present"
+else
+    warn "cron install failed (non-DSM host?) — add a DSM Boot-up task: /usr/local/bin/zmoon boot"
+fi
+
 # ─── Report ───────────────────────────────────────────────────────────────────
 ZT_STATUS=$(docker exec "$CONTAINER_NAME" zerotier-cli status 2>/dev/null || echo "not ready")
 MOON_ID=$(moon_id_of "$MOONS_DIR" || echo "pending")

@@ -241,6 +241,24 @@ assert_grep "entrypoint spreads RPS in container netns"       'rps_cpus'        
 assert_grep "rules.v4 NOTRACK covers both directions"         'OUTPUT -p udp --sport 9993 -j NOTRACK' cat config/rules.v4
 assert_grep "boot watchdog restarts offline moon"             'WATCHDOG'         cat zmoon
 assert_grep "watchdog skips held (unconfigured) containers"   'held for inspection' cat zmoon
+assert_grep "install.sh auto-installs the tuning cron"        'zmoon.{0,3} install-cron' cat install.sh
+assert_grep "update.sh ensures the tuning cron too"           'zmoon.{0,3} install-cron' cat update.sh
+
+# Live idempotency: 3 installs against a fake crontab must yield exactly 1 job.
+# ZMOON_CRONTAB points install-cron at a temp file, so the real /etc/crontab
+# is never touched. Root-only (the command refuses otherwise); CI skips.
+if [[ "$(id -u)" -eq 0 ]]; then
+    _fc=$(mktemp); printf '# fake crontab\n' > "$_fc"
+    for _ in 1 2 3; do ZMOON_CRONTAB="$_fc" ./zmoon install-cron >/dev/null 2>&1 || true; done
+    _n=$(grep -c 'zmoon boot' "$_fc" 2>/dev/null || true)   # grep -c prints 0 itself on no-match
+    if [[ "$_n" -eq 1 ]]; then ok "install-cron idempotent (3 runs → 1 job)"; else no "install-cron idempotent (3 runs → $_n jobs)"; fi
+    ZMOON_CRONTAB="$_fc" ./zmoon uninstall-cron >/dev/null 2>&1 || true
+    _n=$(grep -c 'zmoon boot' "$_fc" 2>/dev/null || true)   # grep -c prints 0 itself on no-match
+    if [[ "$_n" -eq 0 ]]; then ok "uninstall-cron removes the job"; else no "uninstall-cron removes the job ($_n left)"; fi
+    rm -f "$_fc"
+else
+    ok "install-cron idempotency (skipped — needs root)"
+fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
