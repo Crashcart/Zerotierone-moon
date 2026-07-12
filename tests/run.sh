@@ -239,6 +239,8 @@ assert_grep "host sysctls include RFS flow entries"           'rps_sock_flow_ent
 assert_grep "host sysctls include udp_rmem_min"               'udp_rmem_min'     cat lib/tuning.sh
 assert_grep "entrypoint spreads RPS in container netns"       'rps_cpus'         cat entrypoint.sh
 assert_grep "rules.v4 NOTRACK covers both directions"         'OUTPUT -p udp --sport 9993 -j NOTRACK' cat config/rules.v4
+assert_grep "boot watchdog restarts offline moon"             'WATCHDOG'         cat zmoon
+assert_grep "watchdog skips held (unconfigured) containers"   'held for inspection' cat zmoon
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

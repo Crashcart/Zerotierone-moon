@@ -16,7 +16,7 @@
 #   zmoon restore <dir>           Restore moon identity from a backup
 #   zmoon logs [-f]               Show container logs
 #   zmoon web [--host H --port P] Serve the web console + update API
-#   zmoon boot                    Re-apply host tuning on reboot (DSM Boot-up task)
+#   zmoon boot                    Re-apply host tuning + watchdog (cron/Boot-up task)
 #   zmoon install-cron [sched]    Auto re-apply tuning via DSM cron (default */15)
 #   zmoon uninstall-cron          Remove the zmoon cron entry
 #   zmoon autoupdate              Auto-update if AUTO_UPDATE=true in .env
@@ -513,6 +513,23 @@ cmd_boot() {
     if command -v docker >/dev/null 2>&1; then
         if container_running; then
             _blog "container ${CONTAINER_NAME} already running"
+            # ── Watchdog: heal a running-but-offline moon ────────────────────
+            # Docker NEVER restarts an unhealthy container on its own — the
+            # healthcheck only labels it. A wedged daemon (process alive, moon
+            # offline) would otherwise sit dead until someone noticed. Since
+            # this command runs from the 15-min cron, restart when the daemon
+            # doesn't answer ONLINE — EXCEPT a deliberately held container
+            # (entrypoint hold(): misconfigured install awaiting a fix), where
+            # a restart would just re-enter the same hold.
+            if ! zt status 2>/dev/null | grep -q ONLINE; then
+                if docker logs --tail 5 "$CONTAINER_NAME" 2>&1 | grep -q "held for inspection"; then
+                    _blog "container is HELD (unconfigured/fatal state) — not restarting; see docker logs ${CONTAINER_NAME}"
+                elif docker restart --time=15 "$CONTAINER_NAME" >/dev/null 2>&1; then
+                    _blog "WATCHDOG: daemon not ONLINE — container restarted"
+                else
+                    _blog "WATCHDOG: daemon not ONLINE and restart failed"
+                fi
+            fi
         elif docker start "$CONTAINER_NAME" >/dev/null 2>&1; then
             _blog "started container ${CONTAINER_NAME}"
         else

@@ -556,7 +556,8 @@ The following are applied automatically by `install.sh` and `entrypoint.sh`:
 | Mark-scoped MASQUERADE | `config/rules.v4` | `mangle` marks ZT-forwarded packets; `nat` matches the mark — only NATs ZeroTier-forwarded traffic (POSTROUTING can't match `-i`) |
 | conntrack UDP timeout → 300s | host `sysctl.conf` via `install.sh` | Belt-and-suspenders; must be set on the DSM host (not inside container) |
 | 8 MB UDP socket buffers | compose `sysctls` + host `sysctl.conf` | ~2× BDP for ZT on J3455; 25 MB was oversized and caused cache pressure |
-| Docker healthcheck | `docker-compose.yml` | Auto-restarts container if daemon hangs |
+| Docker healthcheck | `docker-compose.yml` | Labels the container unhealthy when the daemon hangs (Docker itself never restarts on unhealthy — the watchdog below does) |
+| Offline-moon watchdog | `zmoon boot` (15-min cron / Boot-up task) | Restarts the container when the daemon stops answering ONLINE — heals a wedged-but-running moon within 15 min; skips deliberately held (unconfigured) containers |
 | `config/local.conf` | mounted into container | Pins port 9993, enables TCP fallback, blacklists Docker/ZT/macvlan interfaces |
 | `fq` qdisc on ZT interface | `entrypoint.sh` (after network join) | Reduces bufferbloat under sustained load |
 | Gratuitous ARP on start | `entrypoint.sh` | Clears stale ARP cache on LAN switches immediately after restart |
