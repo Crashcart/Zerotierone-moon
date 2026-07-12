@@ -19,10 +19,29 @@ HOST_SYSCTLS=(
     "net.core.rmem_max=8388608"
     "net.core.wmem_max=8388608"
     "net.core.netdev_max_backlog=5000"
+    "net.core.rps_sock_flow_entries=32768"
     "net.ipv4.udp_mem=102400 873800 8388608"
+    "net.ipv4.udp_rmem_min=8192"
+    "net.ipv4.udp_wmem_min=8192"
     "net.netfilter.nf_conntrack_udp_timeout=300"
     "net.netfilter.nf_conntrack_udp_timeout_stream=300"
 )
+
+# enable_rps IFACE — spread RX softirq processing across every core.
+# The DS918+ NICs are single-queue: without RPS all receive processing lands on
+# CPU0 while the other three J3455 cores idle, and CPU0 saturation caps
+# forwarding throughput. RPS + RFS (flow steering) is the standard fix.
+# Idempotent; silently a no-op where sysfs is read-only or absent.
+enable_rps() {
+    local iface="$1" mask q
+    [ -n "$iface" ] || return 0
+    mask=$(printf '%x' $(( (1 << $(nproc 2>/dev/null || echo 4)) - 1 )))
+    for q in /sys/class/net/"$iface"/queues/rx-*; do
+        [ -d "$q" ] || continue
+        echo "$mask" > "$q/rps_cpus"       2>/dev/null || true
+        echo 4096   > "$q/rps_flow_cnt"    2>/dev/null || true
+    done
+}
 
 # iface_for SUBNET → name of the interface whose scope-link route matches SUBNET.
 iface_for() { ip -o route show scope link 2>/dev/null | awk -v s="$1" '$1==s{print $3; exit}'; }
@@ -39,4 +58,6 @@ apply_host_tuning() {
     sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null 2>&1 || true
     if [ -n "$if1" ]; then ethtool -K "$if1" gro on tso on gso on >/dev/null 2>&1 || true; fi
     if [ -n "$if2" ]; then ethtool -K "$if2" gro on tso on gso on >/dev/null 2>&1 || true; fi
+    enable_rps "$if1"
+    enable_rps "$if2"
 }

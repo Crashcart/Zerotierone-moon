@@ -564,10 +564,27 @@ The following are applied automatically by `install.sh` and `entrypoint.sh`:
 | `ip rule` flush on restart | `setuproutes.sh` | Prevents duplicate policy rules accumulating across container restarts |
 | Main-table fallback route | `setuproutes.sh` | Allows ZeroTier to reach public planet/root servers outside local subnets |
 | GRO/TSO/GSO NIC offload | `install.sh` ethtool | Lets J3455 hardware batch packets |
+| RPS + RFS on host NICs | `lib/tuning.sh` (install + `zmoon boot`) | DS918+ NICs are single-queue — all RX softirq lands on CPU0 while 3 cores idle; RPS spreads packet processing across all 4 J3455 cores |
+| RPS in container netns | `entrypoint.sh` | Same spreading for the container's macvlan + zt interfaces (the actual forwarding path); best-effort if /sys is read-only |
 | Alpine 3.21 | `Dockerfile` | Newer zerotier-one package (past 1.14.0 Synology bug) |
 | TCP MSS clamping | `config/rules.v4` + `config/rules.v6` | `TCPMSS --clamp-mss-to-pmtu` on SYN/SYN-ACK in `*mangle`; prevents silent TCP black holes when ZT overlay MTU (~1400B effective) < physical NIC MTU (1500B) |
 | IPv6 FORWARD + MSS | `config/rules.v6` | ip6tables mirror of the IPv4 ruleset — ZT↔LAN forwarding, ICMPv6 (required for NDP/PMTU/RAs), MSS clamping; no NAT (IPv6 uses global addresses) |
 | IPv6 forwarding on host | `install.sh` sysctl | `net.ipv6.conf.all.forwarding=1` — without this the kernel silently drops forwarded IPv6 packets regardless of ip6tables rules |
+
+### What actually determines traffic speed (ranked)
+
+1. **Direct peer-to-peer paths.** ZeroTier traffic only flows *through* the moon
+   when peers can't reach each other directly. Forward **UDP 9993** on the router
+   to the container IP and keep `zmoon doctor`'s relayed-peers check green — a
+   direct path is worth more than every kernel knob combined.
+2. **The container forwarding path** (LAN ↔ ZT routed subnets): NOTRACK (no
+   per-packet conntrack), MSS clamping (no PMTU black holes), RPS (all 4 cores),
+   fq qdisc (low latency under load) — all applied automatically.
+3. **The single-core crypto ceiling.** The pinned ZeroTier 1.10.2 encrypts on
+   one core (~300–600 Mbps on the J3455). ZeroTier ≥ 1.14 adds multithreaded
+   packet processing, but 1.14.0 shipped a Synology-relevant regression — the
+   pin stays until a vetted upgrade path is tested. This is the known ceiling,
+   not a misconfiguration.
 
 > **macvlan + port forwarding:** The `ports:` directive in `docker-compose.yml` has **no effect** under macvlan networking — Docker does not create DNAT rules for macvlan containers. Configure your router to forward **UDP 9993** directly to the container's macvlan IP (e.g. `192.168.1.253`). `portMappingEnabled: true` in `local.conf` will attempt UPnP/NAT-PMP automatically if your router supports it.
 

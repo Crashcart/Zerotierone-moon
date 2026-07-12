@@ -231,6 +231,15 @@ assert_grep "status moon.id is the 10-char world id"          'moon_id = moon_wo
 assert_grep "UI has the guarded moon-mode toggle"             'moon-toggle'       cat web/index.html
 assert_grep "UI toggle demote uses a typed prompt"            'Type .{0,40}Moon ID' cat web/app.js
 
+# ─── Data-plane speed (RPS multi-core packet steering) ───────────────────────
+group "data-plane speed"
+assert_grep "tuning defines enable_rps"                       'enable_rps\(\)'   cat lib/tuning.sh
+assert_grep "host tuning applies RPS to both NICs"            'enable_rps .if[12]' cat lib/tuning.sh
+assert_grep "host sysctls include RFS flow entries"           'rps_sock_flow_entries' cat lib/tuning.sh
+assert_grep "host sysctls include udp_rmem_min"               'udp_rmem_min'     cat lib/tuning.sh
+assert_grep "entrypoint spreads RPS in container netns"       'rps_cpus'         cat entrypoint.sh
+assert_grep "rules.v4 NOTRACK covers both directions"         'OUTPUT -p udp --sport 9993 -j NOTRACK' cat config/rules.v4
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo -e "${DIM}─────────────────────────────────────────────${NC}"

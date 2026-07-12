@@ -172,6 +172,21 @@ else
     log "NOTE: No ZeroTier interface found yet — fq qdisc will apply on next restart after network join"
 fi
 
+# ─── RPS: spread RX softirq across all cores (container netns) ───────────────
+# The container's macvlan/zt netdevs have their own RX queues in this namespace;
+# without RPS all their receive processing runs on one core of the J3455 and
+# that core caps forwarding throughput. Best-effort — /sys may be read-only.
+RPS_MASK=$(printf '%x' $(( (1 << $(nproc 2>/dev/null || echo 4)) - 1 )))
+for dev in eth0 eth1 ${ZT_IF:-}; do
+    applied=false
+    for q in /sys/class/net/"$dev"/queues/rx-*; do
+        [[ -d "$q" ]] || continue
+        if echo "$RPS_MASK" > "$q/rps_cpus" 2>/dev/null; then applied=true; fi
+        echo 4096 > "$q/rps_flow_cnt" 2>/dev/null || true
+    done
+    [[ "$applied" == true ]] && log "RPS enabled on $dev (mask $RPS_MASK)"
+done
+
 # ─── Log active local.conf ────────────────────────────────────────────────────
 if [[ -f "$ZT_HOME/local.conf" ]]; then
     log "local.conf loaded: $(tr -d '\n' < "$ZT_HOME/local.conf")"
