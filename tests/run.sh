@@ -260,6 +260,14 @@ else
     ok "install-cron idempotency (skipped — needs root)"
 fi
 
+# zmoon must work when invoked via a symlink (that's how /usr/local/bin and the
+# cron call it). Regression for: SCRIPT_DIR resolved to the symlink's dir, so
+# .env/lib were never found and `zmoon boot` from cron died on every firing.
+assert_grep "zmoon resolves its own symlink"                  'readlink -f'      cat zmoon
+_ld=$(mktemp -d); ln -s "$ROOT/zmoon" "$_ld/zmoon"
+assert_grep "zmoon help works via symlink"                    'zmoon boot'       "$_ld/zmoon" help
+rm -rf "$_ld"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo -e "${DIM}─────────────────────────────────────────────${NC}"

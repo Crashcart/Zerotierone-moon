@@ -33,7 +33,13 @@ set -euo pipefail
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/syno/bin:/usr/syno/sbin:/var/packages/ContainerManager/target/usr/bin:${PATH:-}"
 
 ZMOON_VERSION="1.0.0"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the symlink first: /usr/local/bin/zmoon → <repo>/zmoon. Without this,
+# SCRIPT_DIR points at /usr/local/bin, so .env and lib/ are never found when
+# invoked via the symlink — which is exactly how the PATH command and the
+# 15-min cron invoke it.
+SELF="${BASH_SOURCE[0]}"
+SELF="$(readlink -f "$SELF" 2>/dev/null || echo "$SELF")"
+SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 
 # ─── Colours / output helpers ────────────────────────────────────────────────
