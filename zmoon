@@ -224,7 +224,9 @@ cmd_connect() {
     say ""
     say "${BOLD}Windows${NC}:"
     say "  1. Install ZeroTier One (MSI from zerotier.com); join ${net_id:-<network-id>} from the tray app."
-    say "  2. Copy this file into ${BOLD}C:\\ProgramData\\ZeroTier\\One\\moons.d\\${NC} :"
+    # No trailing backslash before ${NC}: echo -e would eat it into the escape
+    # sequence and print a literal \033[0m instead of resetting the colour.
+    say "  2. Copy this file into ${BOLD}C:\\ProgramData\\ZeroTier\\One\\moons.d${NC} :"
     say "     ${DIM}${DATA_DIR}/zerotier-one/moons.d/${padded}.moon${NC}"
     say "  3. Restart the ZeroTier One service."
     if [[ -n "$net_id" ]]; then

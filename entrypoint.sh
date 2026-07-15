@@ -187,9 +187,9 @@ if [[ -n "${ZT_IF:-}" ]]; then
     if tc qdisc replace dev "$ZT_IF" root fq 2>/dev/null; then
         log "Set fq qdisc on $ZT_IF"
     elif tc qdisc replace dev "$ZT_IF" root fq_codel 2>/dev/null; then
-        log "sch_fq unavailable — set fq_codel on $ZT_IF instead (still beats the default)"
+        log "sch_fq unavailable — set fq_codel qdisc on $ZT_IF instead (still beats the default)"
     else
-        log "NOTE: could not set fq/fq_codel on $ZT_IF (kernel scheduler modules missing)"
+        log "NOTE: could not set fq or fq_codel qdisc on $ZT_IF (kernel scheduler modules missing)"
     fi
 else
     log "NOTE: No ZeroTier interface found yet — fq qdisc will apply on next restart after network join"
