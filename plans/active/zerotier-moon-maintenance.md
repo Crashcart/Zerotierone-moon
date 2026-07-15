@@ -7,6 +7,40 @@ active
 Keep the DS918+ ZeroTier moon node stack current, tested, and production-ready across all branches.
 
 ## Next Action
+**2026-07-15 live install done + doctor triage (user deferred coding — "worry
+about the code later").** NAS updated to dev via one-liner: moon ONLINE, direct
+peer paths, policy routing OK, cron installed once, symlink bug found+fixed
+live (zmoon now readlink-resolves itself; cron was silently dead before).
+`zmoon boot` re-applied tuning → host conntrack 300s PASS.
+
+**Root cause of remaining doctor FAIL/WARNs (diagnosed, fix deferred):** the
+DS918+ DSM kernel lacks the iptables `raw` table (`unable to initialize table
+'raw'`). iptables-restore is ATOMIC per file, so the whole rules.v4 aborts —
+NOTRACK FAIL *and* missing zt+ FORWARD come from this one failure. fq WARN:
+kernel likely lacks sch_fq too; entrypoint logs "Set fq qdisc" even when `tc
+… || true` failed (misleading). rmem_max=0 WARN is a DOCTOR BUG: it reads
+net.core.rmem_max inside the container (zmoon:356) where DSM blocks it — host
+value is fine. Interim posture is safe: host conntrack 300s covers the
+timeout NOTRACK guarded against; forwarding gap only affects LAN↔ZT gateway
+traffic (unchanged from before — same kernel, newly surfaced by doctor).
+
+**Deferred TODO (next coding session):**
+1. entrypoint: on rules.v4 restore failure, retry with the *raw section
+   stripped (filter/mangle/nat still apply → zt+ FORWARD restored); attempt
+   host-side `modprobe iptable_raw sch_fq` from zmoon boot first.
+2. fq: fall back to fq_codel when sch_fq is absent; stop logging success on
+   failure.
+3. doctor: read rmem_max on the HOST, not in the container ns.
+4. update.sh: regenerate $DATA_DIR config files (rules.v4/v6, setuproutes,
+   local.conf) so config drift between repo and data dir can't recur.
+5. update.sh report: print 10-char world id (still prints padded filename).
+6. **FEATURE (user request): TUN-connectivity watchdog interval — verify the
+   connection hourly by default (60 min), editable from the web page.**
+   Current watchdog piggybacks the 15-min tuning cron; make the verify
+   cadence its own setting (WATCHDOG_INTERVAL_MIN=60 in .env, exposed as an
+   editable field in the web console, cron line updated accordingly).
+
+## Prior Next Action
 **2026-07-06 install day:** `dev` fast-forwarded to `7249875` (user-approved) —
 the documented one-liner now installs everything: web console + update API,
 `zmoon boot/connect/install-cron/web`, tuning lib, perf fixes, and the
