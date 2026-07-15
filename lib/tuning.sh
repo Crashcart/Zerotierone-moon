@@ -60,4 +60,14 @@ apply_host_tuning() {
     if [ -n "$if2" ]; then ethtool -K "$if2" gro on tso on gso on >/dev/null 2>&1 || true; fi
     enable_rps "$if1"
     enable_rps "$if2"
+    # Kernel modules the container ruleset wants but DSM does not autoload:
+    # iptable_raw enables NOTRACK, sch_fq enables the fq qdisc. Containers
+    # share the host kernel, so loading here makes them appear inside the
+    # container too. Best-effort — DSM may not ship them at all, and every
+    # consumer degrades gracefully (raw-stripped restore, fq_codel fallback).
+    for _mod in iptable_raw ip6table_raw sch_fq; do
+        modprobe "$_mod" >/dev/null 2>&1 \
+            || insmod "/lib/modules/${_mod}.ko" >/dev/null 2>&1 \
+            || true
+    done
 }

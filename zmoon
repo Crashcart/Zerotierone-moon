@@ -337,9 +337,20 @@ cmd_doctor() {
         chk_warn "Could not read process capabilities"
     fi
 
-    # 5. NOTRACK applied for UDP 9993
+    # 5. NOTRACK applied for UDP 9993. When the kernel has no raw table at all
+    # (DSM often omits iptable_raw), NOTRACK is impossible rather than
+    # misconfigured — downgrade to WARN if the host conntrack timeout (the
+    # thing NOTRACK protects against) is already raised.
     if docker exec "$CONTAINER_NAME" iptables -t raw -S 2>/dev/null | grep -q 'NOTRACK'; then
         chk_pass "NOTRACK rule active for ZeroTier UDP"
+    elif ! docker exec "$CONTAINER_NAME" iptables -t raw -L -n >/dev/null 2>&1; then
+        local _ct
+        _ct="$(sysctl -n net.netfilter.nf_conntrack_udp_timeout 2>/dev/null || echo 0)"
+        if [[ "$_ct" -ge 120 ]]; then
+            chk_warn "raw table unavailable in kernel — NOTRACK impossible; host conntrack ${_ct}s covers keepalives"
+        else
+            chk_fail "raw table unavailable AND host conntrack timeout ${_ct}s — run 'zmoon boot'"
+        fi
     else
         chk_fail "NOTRACK missing — conntrack 30s timeout may cut connections"
     fi
@@ -351,13 +362,15 @@ cmd_doctor() {
         chk_warn "No zt+ FORWARD rules — relay/gateway traffic may be dropped"
     fi
 
-    # 7. Socket buffers tuned
+    # 7. Socket buffers tuned — read on the HOST. DSM does not expose
+    # net.core.* inside the container namespace, so the old in-container read
+    # returned 0 forever and warned even when the host was tuned correctly.
     local rmem
-    rmem="$(docker exec "$CONTAINER_NAME" sysctl -n net.core.rmem_max 2>/dev/null || echo 0)"
+    rmem="$(sysctl -n net.core.rmem_max 2>/dev/null || echo 0)"
     if [[ "$rmem" -ge 8388608 ]]; then
-        chk_pass "UDP socket buffers tuned (rmem_max=${rmem})"
+        chk_pass "UDP socket buffers tuned (host rmem_max=${rmem})"
     else
-        chk_warn "rmem_max=${rmem} (expected >= 8388608)"
+        chk_warn "host rmem_max=${rmem} (expected >= 8388608) — run 'zmoon boot'"
     fi
 
     # 8. fq qdisc on the ZT interface
@@ -366,6 +379,8 @@ cmd_doctor() {
     if [[ -n "$zt_if" ]]; then
         if docker exec "$CONTAINER_NAME" tc qdisc show dev "$zt_if" 2>/dev/null | grep -q 'qdisc fq '; then
             chk_pass "fq qdisc active on $zt_if"
+        elif docker exec "$CONTAINER_NAME" tc qdisc show dev "$zt_if" 2>/dev/null | grep -q 'qdisc fq_codel'; then
+            chk_pass "fq_codel qdisc active on $zt_if (sch_fq unavailable — acceptable fallback)"
         else
             chk_warn "fq qdisc not set on $zt_if (bufferbloat under load)"
         fi

@@ -268,6 +268,26 @@ _ld=$(mktemp -d); ln -s "$ROOT/zmoon" "$_ld/zmoon"
 assert_grep "zmoon help works via symlink"                    'zmoon boot'       "$_ld/zmoon" help
 rm -rf "$_ld"
 
+# ─── DSM raw-table resilience (live-NAS doctor triage, 2026-07-15) ──────────
+group "raw-table resilience"
+assert_grep "entrypoint retries restore without raw table"    'retrying without the raw table' cat entrypoint.sh
+assert_grep "entrypoint falls back to fq_codel"               'fq_codel'         cat entrypoint.sh
+assert_grep "entrypoint no longer logs fq success blindly"    'could not set fq' cat entrypoint.sh
+assert_grep "tuning tries to load iptable_raw + sch_fq"       'iptable_raw'      cat lib/tuning.sh
+assert_grep "doctor reads rmem_max on the host"               'host rmem_max'    cat zmoon
+assert_grep "doctor downgrades NOTRACK when raw impossible"   'raw table unavailable' cat zmoon
+assert_grep "update report prints 10-char world id"           'MOON_ID: -10'     cat update.sh
+# The strip must remove the raw section entirely while keeping every other
+# table — a botched strip would silently drop FORWARD/MSS/masquerade again.
+_sv=$(mktemp)
+awk '/^\*raw$/{skip=1} !skip{print} skip&&/^COMMIT$/{skip=0}' config/rules.v4 > "$_sv"
+assert_exit 1 "stripped set has no raw section"    grep -q '^\*raw' "$_sv"
+assert_ok      "stripped set keeps filter table"   grep -q '^\*filter' "$_sv"
+assert_ok      "stripped set keeps mangle table"   grep -q '^\*mangle' "$_sv"
+assert_ok      "stripped set keeps nat table"      grep -q '^\*nat' "$_sv"
+assert_ok      "stripped set keeps zt+ FORWARD"    grep -q 'FORWARD.*zt' "$_sv"
+rm -f "$_sv"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo -e "${DIM}─────────────────────────────────────────────${NC}"

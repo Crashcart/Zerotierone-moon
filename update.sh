@@ -295,6 +295,8 @@ fi
 # ─── Report ───────────────────────────────────────────────────────────────────
 ZT_STATUS=$(docker exec "$CONTAINER_NAME" zerotier-cli status 2>/dev/null || echo "not ready")
 MOON_ID=$(moon_id_of "$MOONS_DIR" || echo "pending")
+# Report the 10-char world id (what `orbit` takes), not the padded filename
+[[ "$MOON_ID" =~ ^0*[0-9a-fA-F]{10}$ && ${#MOON_ID} -eq 16 ]] && MOON_ID="${MOON_ID: -10}"
 
 echo
 echo -e "${G}────────────────────────────────────────────────────────────${NC}"

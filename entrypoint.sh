@@ -66,7 +66,23 @@ fi
 # ─── Apply iptables rules ──────────────────────────────────────────────────────
 if [[ -f /etc/iptables/rules.v4 ]]; then
     log "Applying iptables rules (NOTRACK + FORWARD + scoped MASQUERADE)..."
-    iptables-restore < /etc/iptables/rules.v4 || log "WARNING: iptables-restore failed (may need NET_ADMIN/NET_RAW cap)"
+    if iptables-restore < /etc/iptables/rules.v4; then
+        log "iptables rules applied (full set incl. raw/NOTRACK)"
+    else
+        # DSM kernels often lack the raw table (iptable_raw.ko not loaded /
+        # not shipped). iptables-restore is ATOMIC PER FILE, so one missing
+        # table aborts the whole ruleset — filter/mangle/nat (zt+ FORWARD,
+        # MSS clamp, scoped MASQUERADE) would all silently vanish with it.
+        # Strip the *raw section and retry: everything else still lands, and
+        # the 300s host conntrack timeout (install.sh / zmoon boot) covers
+        # the keepalive-timeout problem NOTRACK guarded against.
+        log "WARNING: full restore failed — retrying without the raw table (kernel lacks iptable_raw?)"
+        if awk '/^\*raw$/{skip=1} !skip{print} skip&&/^COMMIT$/{skip=0}' /etc/iptables/rules.v4 | iptables-restore; then
+            log "iptables rules applied WITHOUT raw/NOTRACK — host conntrack 300s covers ZT keepalives"
+        else
+            log "WARNING: iptables-restore failed even without raw — check NET_ADMIN/NET_RAW caps"
+        fi
+    fi
 fi
 
 if [[ -f /etc/iptables/rules.v6 ]]; then
@@ -166,8 +182,15 @@ fi
 # and keeping latency low under load (reduces bufferbloat on the ZT interface).
 ZT_IF=$(ip link show 2>/dev/null | awk -F': ' '/^[0-9]+: zt/{print $2; exit}')
 if [[ -n "${ZT_IF:-}" ]]; then
-    tc qdisc replace dev "$ZT_IF" root fq 2>/dev/null || true
-    log "Set fq qdisc on $ZT_IF"
+    # Log what actually happened — the old `|| true; log "Set fq"` claimed
+    # success even when the kernel had no sch_fq. Fall back to fq_codel.
+    if tc qdisc replace dev "$ZT_IF" root fq 2>/dev/null; then
+        log "Set fq qdisc on $ZT_IF"
+    elif tc qdisc replace dev "$ZT_IF" root fq_codel 2>/dev/null; then
+        log "sch_fq unavailable — set fq_codel on $ZT_IF instead (still beats the default)"
+    else
+        log "NOTE: could not set fq/fq_codel on $ZT_IF (kernel scheduler modules missing)"
+    fi
 else
     log "NOTE: No ZeroTier interface found yet — fq qdisc will apply on next restart after network join"
 fi
