@@ -42,7 +42,7 @@ for i in $(seq 1 $ZT_TIMEOUT); do
     fi
     # Detect immediate process death rather than waiting the full timeout
     if ! kill -0 "$ZT_PID" 2>/dev/null; then
-        hold "ZeroTier process (PID $ZT_PID) exited on startup — check /dev/net/tun and the data dir mount"
+        hold "ZeroTier process (PID $ZT_PID) exited on startup - check /dev/net/tun and the data dir mount"
     fi
     if [[ $i -eq $ZT_TIMEOUT ]]; then
         hold "ZeroTier did not start within ${ZT_TIMEOUT}s"
@@ -60,13 +60,16 @@ if sysctl -w net.netfilter.nf_conntrack_udp_timeout=300 2>/dev/null; then
     sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=300 2>/dev/null || true
     log "conntrack UDP timeout set to 300s"
 else
-    log "NOTE: conntrack UDP timeout not writable from container — set by install.sh on host"
+    log "NOTE: conntrack UDP timeout not writable from container - set by install.sh on host"
 fi
 
 # ─── Apply iptables rules ──────────────────────────────────────────────────────
 if [[ -f /etc/iptables/rules.v4 ]]; then
     log "Applying iptables rules (NOTRACK + FORWARD + scoped MASQUERADE)..."
-    if iptables-restore < /etc/iptables/rules.v4; then
+    # Suppress this attempt's stderr — a missing raw table prints a scary
+    # "unable to initialize table 'raw' / Error occurred at line: N" that we
+    # handle deliberately in the retry below. Real failures still surface there.
+    if iptables-restore < /etc/iptables/rules.v4 2>/dev/null; then
         log "iptables rules applied (full set incl. raw/NOTRACK)"
     else
         # DSM kernels often lack the raw table (iptable_raw.ko not loaded /
@@ -76,11 +79,11 @@ if [[ -f /etc/iptables/rules.v4 ]]; then
         # Strip the *raw section and retry: everything else still lands, and
         # the 300s host conntrack timeout (install.sh / zmoon boot) covers
         # the keepalive-timeout problem NOTRACK guarded against.
-        log "WARNING: full restore failed — retrying without the raw table (kernel lacks iptable_raw?)"
+        log "WARNING: full restore failed - retrying without the raw table (kernel lacks iptable_raw?)"
         if awk '/^\*raw$/{skip=1} !skip{print} skip&&/^COMMIT$/{skip=0}' /etc/iptables/rules.v4 | iptables-restore; then
-            log "iptables rules applied WITHOUT raw/NOTRACK — host conntrack 300s covers ZT keepalives"
+            log "iptables rules applied WITHOUT raw/NOTRACK - host conntrack 300s covers ZT keepalives"
         else
-            log "WARNING: iptables-restore failed even without raw — check NET_ADMIN/NET_RAW caps"
+            log "WARNING: iptables-restore failed even without raw - check NET_ADMIN/NET_RAW caps"
         fi
     fi
 fi
@@ -93,7 +96,7 @@ fi
 # ─── Apply dual-NIC routing ────────────────────────────────────────────────────
 if [[ -f "$ZT_HOME/setuproutes.sh" ]]; then
     log "Applying dual-NIC routing rules..."
-    bash "$ZT_HOME/setuproutes.sh" || log "WARNING: setuproutes.sh failed — check interface names"
+    bash "$ZT_HOME/setuproutes.sh" || log "WARNING: setuproutes.sh failed - check interface names"
 fi
 
 # ─── Send gratuitous ARP to clear stale ARP cache on LAN switches ─────────────
@@ -130,7 +133,7 @@ if [[ "${GENERATE_MOON:-false}" == "true" ]]; then
             [[ -f "$ZT_HOME/identity.public" ]] && break
             sleep 1
         done
-        [[ -f "$ZT_HOME/identity.public" ]] || hold "identity.public not found after 10s — data dir may not be writable"
+        [[ -f "$ZT_HOME/identity.public" ]] || hold "identity.public not found after 10s - data dir may not be writable"
 
         zerotier-idtool initmoon "$ZT_HOME/identity.public" > "$MOON_JSON"
 
@@ -142,7 +145,7 @@ if [[ "${GENERATE_MOON:-false}" == "true" ]]; then
                 "$MOON_JSON" > "${MOON_JSON}.tmp" && mv "${MOON_JSON}.tmp" "$MOON_JSON"
             log "Stable endpoints set: $MOON_ENDPOINTS"
         else
-            log "WARNING: MOON_ENDPOINTS not set — edit $MOON_JSON manually and run genmoon"
+            log "WARNING: MOON_ENDPOINTS not set - edit $MOON_JSON manually and run genmoon"
         fi
     fi
 
@@ -170,7 +173,7 @@ elif [[ -f "$ZT_HOME/moon.json" ]]; then
     MOON_ID=$(jq -r '.id' "$ZT_HOME/moon.json" 2>/dev/null || true)
     if [[ -n "$MOON_ID" && "$MOON_ID" != "null" ]]; then
         zerotier-cli deorbit "$MOON_ID" 2>/dev/null || true
-        log "CLIENT MODE: deorbited own moon $MOON_ID (moon files kept — re-enable moon mode to restore)"
+        log "CLIENT MODE: deorbited own moon $MOON_ID (moon files kept - re-enable moon mode to restore)"
     fi
 fi
 
@@ -190,30 +193,37 @@ if [[ -n "${ZT_IF:-}" ]]; then
     if tc qdisc replace dev "$ZT_IF" root fq 2>/dev/null; then
         log "Set fq qdisc on $ZT_IF"
     elif tc qdisc replace dev "$ZT_IF" root fq_codel 2>/dev/null; then
-        log "sch_fq unavailable — set fq_codel qdisc on $ZT_IF instead"
+        log "sch_fq unavailable - set fq_codel qdisc on $ZT_IF instead"
     elif tc qdisc replace dev "$ZT_IF" root sfq perturb 10 2>/dev/null; then
-        log "fq/fq_codel unavailable — set sfq qdisc on $ZT_IF (per-flow fairness; beats pfifo_fast)"
+        log "fq/fq_codel unavailable - set sfq qdisc on $ZT_IF (per-flow fairness; beats pfifo_fast)"
     else
         log "NOTE: could not set fq/fq_codel/sfq qdisc on $ZT_IF (kernel scheduler modules missing)"
     fi
 else
-    log "NOTE: No ZeroTier interface found yet — fq qdisc will apply on next restart after network join"
+    log "NOTE: No ZeroTier interface found yet - fq qdisc will apply on next restart after network join"
 fi
 
 # ─── RPS: spread RX softirq across all cores (container netns) ───────────────
-# The container's macvlan/zt netdevs have their own RX queues in this namespace;
-# without RPS all their receive processing runs on one core of the J3455 and
-# that core caps forwarding throughput. Best-effort — /sys may be read-only.
+# /sys/class/net/*/queues is READ-ONLY inside the container on DSM, so this
+# normally can't apply here — the physical NICs get RPS host-side via
+# lib/tuning.sh (zmoon boot). We still try in case /sys is writable on some
+# setups. NOTE: a plain `echo >file 2>/dev/null` does NOT hide a read-only-FS
+# open error (the 2> is set up after the > fails), so wrap each write in a
+# subshell whose stderr is redirected as a whole — that keeps the log clean.
 RPS_MASK=$(printf '%x' $(( (1 << $(nproc 2>/dev/null || echo 4)) - 1 )))
+rps_any=false
 for dev in eth0 eth1 ${ZT_IF:-}; do
-    applied=false
     for q in /sys/class/net/"$dev"/queues/rx-*; do
         [[ -d "$q" ]] || continue
-        if echo "$RPS_MASK" > "$q/rps_cpus" 2>/dev/null; then applied=true; fi
-        echo 4096 > "$q/rps_flow_cnt" 2>/dev/null || true
+        ( echo "$RPS_MASK" > "$q/rps_cpus" )   2>/dev/null && rps_any=true
+        ( echo 4096       > "$q/rps_flow_cnt" ) 2>/dev/null || true
     done
-    [[ "$applied" == true ]] && log "RPS enabled on $dev (mask $RPS_MASK)"
 done
+if [[ "$rps_any" == true ]]; then
+    log "RPS enabled in container (mask $RPS_MASK)"
+else
+    log "NOTE: /sys read-only in container - RPS applied host-side by zmoon boot"
+fi
 
 # ─── Log active local.conf ────────────────────────────────────────────────────
 if [[ -f "$ZT_HOME/local.conf" ]]; then
