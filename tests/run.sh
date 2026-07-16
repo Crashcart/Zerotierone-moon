@@ -272,6 +272,8 @@ rm -rf "$_ld"
 group "raw-table resilience"
 assert_grep "entrypoint retries restore without raw table"    'retrying without the raw table' cat entrypoint.sh
 assert_grep "entrypoint falls back to fq_codel"               'fq_codel'         cat entrypoint.sh
+assert_grep "entrypoint falls back to sfq (DSM kernel has it)" 'root sfq perturb' cat entrypoint.sh
+assert_grep "doctor accepts sfq qdisc as PASS"                'sfq).*chk_pass'   cat zmoon
 assert_grep "entrypoint no longer logs fq success blindly"    'could not set fq' cat entrypoint.sh
 assert_grep "tuning tries to load iptable_raw + sch_fq"       'iptable_raw'      cat lib/tuning.sh
 assert_grep "doctor reads rmem_max on the host"               'host rmem_max'    cat zmoon

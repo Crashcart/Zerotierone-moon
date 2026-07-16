@@ -182,14 +182,19 @@ fi
 # and keeping latency low under load (reduces bufferbloat on the ZT interface).
 ZT_IF=$(ip link show 2>/dev/null | awk -F': ' '/^[0-9]+: zt/{print $2; exit}')
 if [[ -n "${ZT_IF:-}" ]]; then
-    # Log what actually happened — the old `|| true; log "Set fq"` claimed
-    # success even when the kernel had no sch_fq. Fall back to fq_codel.
+    # Anti-bufferbloat qdisc, best available first. The DS918+ DSM kernel ships
+    # none of fq/fq_codel/cake but DOES have sch_sfq — so sfq (per-flow fairness,
+    # perturb 10 to rehash and avoid persistent hash collisions) is the real
+    # fallback here, far better than the pfifo_fast default. Log what actually
+    # took; the old code logged "Set fq" even when the kernel had no sch_fq.
     if tc qdisc replace dev "$ZT_IF" root fq 2>/dev/null; then
         log "Set fq qdisc on $ZT_IF"
     elif tc qdisc replace dev "$ZT_IF" root fq_codel 2>/dev/null; then
-        log "sch_fq unavailable — set fq_codel qdisc on $ZT_IF instead (still beats the default)"
+        log "sch_fq unavailable — set fq_codel qdisc on $ZT_IF instead"
+    elif tc qdisc replace dev "$ZT_IF" root sfq perturb 10 2>/dev/null; then
+        log "fq/fq_codel unavailable — set sfq qdisc on $ZT_IF (per-flow fairness; beats pfifo_fast)"
     else
-        log "NOTE: could not set fq or fq_codel qdisc on $ZT_IF (kernel scheduler modules missing)"
+        log "NOTE: could not set fq/fq_codel/sfq qdisc on $ZT_IF (kernel scheduler modules missing)"
     fi
 else
     log "NOTE: No ZeroTier interface found yet — fq qdisc will apply on next restart after network join"

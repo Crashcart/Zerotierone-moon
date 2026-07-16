@@ -379,13 +379,14 @@ cmd_doctor() {
     local zt_if
     zt_if="$(docker exec "$CONTAINER_NAME" sh -c "ip -o link show | awk -F': ' '/ zt/{print \$2; exit}'" 2>/dev/null | tr -d ' ')"
     if [[ -n "$zt_if" ]]; then
-        if docker exec "$CONTAINER_NAME" tc qdisc show dev "$zt_if" 2>/dev/null | grep -q 'qdisc fq '; then
-            chk_pass "fq qdisc active on $zt_if"
-        elif docker exec "$CONTAINER_NAME" tc qdisc show dev "$zt_if" 2>/dev/null | grep -q 'qdisc fq_codel'; then
-            chk_pass "fq_codel qdisc active on $zt_if (sch_fq unavailable — acceptable fallback)"
-        else
-            chk_warn "fq qdisc not set on $zt_if (bufferbloat under load)"
-        fi
+        local qd
+        qd="$(docker exec "$CONTAINER_NAME" tc qdisc show dev "$zt_if" 2>/dev/null | awk '/^qdisc/{print $2; exit}')"
+        case "$qd" in
+            fq)              chk_pass "fq qdisc active on $zt_if" ;;
+            fq_codel|codel)  chk_pass "$qd qdisc active on $zt_if (sch_fq unavailable — good fallback)" ;;
+            sfq)             chk_pass "sfq qdisc active on $zt_if (fq/fq_codel unavailable — per-flow fairness fallback)" ;;
+            *)               chk_warn "no anti-bufferbloat qdisc on $zt_if (got '${qd:-none}'; kernel lacks fq/fq_codel/sfq)" ;;
+        esac
     else
         chk_warn "No ZeroTier interface yet (not joined a network?)"
     fi
