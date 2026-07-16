@@ -1,0 +1,46 @@
+{
+  "_sample": true,
+  "generatedAt": 1751731200,
+  "moonMode": true,
+  "moon": {
+    "id": "0000000000",
+    "subtitle": "DS918+ root anchor (demo)",
+    "online": true,
+    "version": "1.14.0",
+    "uptimeSeconds": 486000,
+    "endpoints": {
+      "lan1": "192.168.1.253/9993",
+      "lan2": "172.16.0.253/9993",
+      "public": ""
+    }
+  },
+  "interfaces": [
+    { "name": "eth0", "ip": "192.168.1.253", "subnet": "192.168.1.0/24", "gateway": "192.168.1.1", "up": true },
+    { "name": "eth1", "ip": "172.16.0.253", "subnet": "172.16.0.0/24", "gateway": "", "up": true }
+  ],
+  "peers": [
+    { "address": "aaaaaaaaaa", "role": "LEAF", "latencyMs": 12, "version": "1.14.0", "paths": [{ "address": "192.168.1.40/9993", "active": true }], "lastSeenSeconds": 8 },
+    { "address": "bbbbbbbbbb", "role": "LEAF", "latencyMs": 34, "version": "1.12.2", "paths": [{ "address": "192.168.1.55/9993", "active": true }], "lastSeenSeconds": 45 },
+    { "address": "cccccccccc", "role": "PLANET", "latencyMs": 88, "version": "-", "paths": [{ "address": "203.0.113.9/9993", "active": true }], "lastSeenSeconds": 3 }
+  ],
+  "network": {
+    "id": "",
+    "name": "home-overlay",
+    "ipPool": "10.147.0.0/24",
+    "routes": [
+      { "target": "10.147.0.0/24", "via": null },
+      { "target": "192.168.1.0/24", "via": "10.147.0.253" }
+    ]
+  },
+  "members": [
+    { "address": "aaaaaaaaaa", "name": "laptop", "authorized": true, "ipAssignments": ["10.147.0.10"], "online": true, "lastSeenSeconds": 8 },
+    { "address": "bbbbbbbbbb", "name": "phone", "authorized": true, "ipAssignments": ["10.147.0.11"], "online": true, "lastSeenSeconds": 45 },
+    { "address": "dddddddddd", "name": "", "authorized": false, "ipAssignments": [], "online": false, "lastSeenSeconds": 3600 }
+  ],
+  "client": {
+    "address": "aaaaaaaaaa",
+    "ip": "10.147.0.10",
+    "online": true,
+    "orbitedMoon": true
+  }
+}

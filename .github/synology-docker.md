@@ -1,5 +1,10 @@
 # Running ZeroTier One Moon on Synology NAS with Docker
 
+> **Note:** This document describes the generic setup using `zyclonite/zerotier`. This project
+> builds a **custom `zerotier-moon` image** (Alpine 3.21 + stability tuning). For production
+> deployment, use `install.sh` which handles everything automatically.
+> See `Dockerfile`, `entrypoint.sh`, and `docker-compose.yml` for the actual implementation.
+
 This guide explains how to deploy a ZeroTier One Moon (private root/bridge server) on a Synology NAS using the built-in **Container Manager** (formerly Docker) application available in Synology DiskStation Manager (DSM).
 
 > **Reference:** [Synology DSM – Container Manager (Docker) feature page](https://www.synology.com/en-us/dsm/feature/docker)

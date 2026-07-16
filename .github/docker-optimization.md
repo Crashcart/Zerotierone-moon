@@ -22,7 +22,7 @@ WORKDIR /app
 RUN make build
 
 # Stage 2: Runtime (minimal)
-FROM alpine:3.19
+FROM alpine:3.21
 COPY --from=builder /app/app /app/app
 CMD ["/app/app"]
 ```
@@ -39,12 +39,12 @@ README.md
 
 ## ZeroTier-Specific Notes
 
-The official ZeroTier Docker image (`zyclonite/zerotier`) is already optimized.
-For custom builds, use Alpine as the base and install only `zerotier-one`.
+This project uses a custom `zerotier-moon` image (see `Dockerfile`) based on Alpine 3.21
+with stability and diagnostic packages included. Minimum viable example:
 
 ```dockerfile
-FROM alpine:3.19
-RUN apk add --no-cache zerotier-one
+FROM alpine:3.21
+RUN apk add --no-cache zerotier-one iproute2 iptables ip6tables bash jq iputils
 VOLUME /var/lib/zerotier-one
 EXPOSE 9993/udp
 CMD ["zerotier-one"]
